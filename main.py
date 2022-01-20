@@ -36,20 +36,21 @@ def main(resume, model):
     if resume:
         agent.load_weights("weights/test")
     training_params = {
-        "epochs": 5000,
+        "epochs": 1000,
         "evaluation_epochs": 100,
         "eval_every": 100,
         "save_dir": "weights",
         "agent_name": "test",
     }
     loss = train(env, agent, training_params)
-    print("loss", loss)
+    print("\nloss", loss)
     plot_data("Training loss", [loss], "loss")
 
 
 def train(env: Wordle, agent: Agent, training_params: dict):
     agent.train()
     losses = []
+    loss = -1
     # word_guesses = []
     for e in range(training_params["epochs"]):
         data_params = {
@@ -80,7 +81,9 @@ def train(env: Wordle, agent: Agent, training_params: dict):
             )
         )
         sys.stdout.flush()
-        sys.stdout.write(", epoch %d" % (e + 1))
+        sys.stdout.write(f", epoch {e + 1}")
+        sys.stdout.flush()
+        sys.stdout.write(f", loss {np.mean(losses)}")
         sys.stdout.flush()
         if e % training_params["eval_every"] == 0:
             agent.save_weights(
@@ -95,22 +98,11 @@ def evaluate(env, agent, training_params):
     agent.evaluate()
     loss = []
     for e in range(training_params["evaluation_epochs"]):
-        sys.stdout.write("\r")
         state, reward, done = env.reset()
         while not done:
             outputs: dict = agent(state)
             state, reward, done = env.step(outputs["word"])
         loss.append(reward)
-        sys.stdout.write(
-            "[%-60s] %d%%"
-            % (
-                "=" * (60 * (e + 1) // training_params["evaluation_epochs"]),
-                (100 * (e + 1) // training_params["evaluation_epochs"]),
-            )
-        )
-        sys.stdout.flush()
-        sys.stdout.write(", epoch %d" % (e + 1))
-        sys.stdout.flush()
     return np.mean(loss)
 
 

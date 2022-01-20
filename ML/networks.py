@@ -50,7 +50,7 @@ class Q_learning(nn.Module):
     def __init__(self, seed, output_dims):
         super(Q_learning, self).__init__()
         self.seed = torch.manual_seed(seed)
-        self.emb = Embedder(Tokens.EXACT + 1, 16)
+        self.emb = nn.Embedding(Tokens.EXACT + 1, 16, padding_idx=0)
         self.conv1 = nn.Conv3d(
             6, 16, kernel_size=(5, 26, 16), stride=(1, 1, 1), bias=False
         )

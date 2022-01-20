@@ -105,7 +105,7 @@ class Agent(object):
         self.network.eval()
 
     def save_weights(self, path):
-        print(f"saving weights to {path}")
+        # print(f"saving weights to {path}")
         directory = os.path.dirname(path)
         if not os.path.exists(directory):
             os.mkdir(directory)
