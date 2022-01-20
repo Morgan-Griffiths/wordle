@@ -10,6 +10,10 @@ deep learning environment for training bots on the game wordle.
 
 ```python main.py``` 
 
+# weights
+
+Network weights saved in weights
+
 # loss plots
 
 are in assets
