@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from math import *
 import numpy as np
-from globals import Tokens
+from globals import Outputs, Tokens
 from torch.distributions import Categorical
 
 
@@ -62,7 +62,6 @@ class Q_learning(nn.Module):
         self.fc_value2 = nn.Linear(32, 1)
         self.value_output = nn.Linear(128, 1)
         self.advantage_output = nn.Linear(128, output_dims)
-        self.tanh_value = nn.Tanh()
 
         self.noise = GaussianNoise()
 
@@ -84,7 +83,12 @@ class Q_learning(nn.Module):
         m = Categorical(action_probs)
         action = m.sample()
         action_prob = m.log_prob(action)
-        return action, action_prob, action_probs, q
+        return {
+            Outputs.ACTION: action,
+            Outputs.ACTION_PROB: action_prob,
+            Outputs.ACTION_PROBS: action_probs,
+            Outputs.VALUES: F.tanh(q),
+        }
 
 
 class Policy(nn.Module):

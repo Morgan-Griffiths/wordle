@@ -5,6 +5,12 @@ class Tokens:
     EXACT = 3
 
 
+class Results:
+    VALUES = "values"
+    ACTION_PROBS = "action_probs"
+    LOSSES = "losses"
+
+
 class Axis:
     SLOT = 0
     STATE = 1
@@ -17,12 +23,21 @@ class Models:
     AC_LEARNING = "ac_learning"
 
 
+class Outputs:
+    VALUES = "values"
+    ACTION_PROBS = "action_probs"
+    ACTION_PROB = "action_prob"
+    ACTION = "action"
+    WORD = "word"
+
+
 class AgentData:
     REWARDS = "rewards"
     ACTIONS = "actions"
     ACTION_PROBS = "action_probs"
     VALUES = "values"
     STATES = "states"
+    DONES = "dones"
 
 
 class State:
@@ -31,7 +46,7 @@ class State:
 
 class Dims:
     INPUT = 26
-    OUTPUT = 10  # 12972
+    OUTPUT = 5  # 12972
 
 
 with open("wordle.txt", "r") as f:
