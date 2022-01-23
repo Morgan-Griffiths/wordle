@@ -36,7 +36,7 @@ def main(resume, model):
     if resume:
         agent.load_weights("weights/test")
     training_params = {
-        "epochs": 5000,
+        "epochs": 500,
         "evaluation_epochs": 100,
         "eval_every": 50,
         "save_dir": "weights",

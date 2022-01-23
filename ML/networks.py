@@ -58,11 +58,8 @@ class Q_learning(nn.Module):
         self.fc2 = nn.Linear(32, 128)
 
         # the part for the value function
-        self.fc_value1 = nn.Linear(128, 32)
-        self.fc_value2 = nn.Linear(32, 1)
         self.value_output = nn.Linear(128, 1)
         self.advantage_output = nn.Linear(128, output_dims)
-
         self.noise = GaussianNoise()
 
     def forward(self, x: torch.LongTensor):
@@ -110,7 +107,6 @@ class Policy(nn.Module):
         self.fc_value2 = nn.Linear(32, 1)
         self.value_output = nn.Linear(128, 1)
         self.advantage_output = nn.Linear(128, output_dims)
-        self.tanh_value = nn.Tanh()
 
     def forward(self, x: torch.LongTensor):
         # B,26
@@ -134,3 +130,32 @@ class Policy(nn.Module):
         v = v.expand_as(a)
         q = v + a - a.mean(1, keepdim=True).expand_as(a)
         return action, action_prob, prob, q
+
+
+class Captials(nn.Module):
+    def __init__(self, params: dict):
+        super(Captials, self).__init__()
+        self.seed = torch.manual_seed(params["seed"])
+        self.emb = nn.Embedding(3, 16)
+        self.fc1 = nn.Linear(16, 32)
+        self.fc2 = nn.Linear(832, params["nA"])
+
+    def forward(self, x: torch.LongTensor):
+        B = x.shape[0]
+        y = self.emb(x)
+        y = F.leaky_relu(self.fc1(y))
+        y = F.leaky_relu(self.fc2(y.view(B, -1)))
+        return y
+
+
+class Letters(nn.Module):
+    def __init__(self, params):
+        super(Letters, self).__init__()
+        self.seed = torch.manual_seed(params["seed"])
+        self.fc1 = nn.Linear(26, 54)
+        self.fc2 = nn.Linear(54, params["nA"])
+
+    def forward(self, x: torch.LongTensor):
+        y = F.leaky_relu(self.fc1(x.float()))
+        y = F.leaky_relu(self.fc2(y))
+        return y
