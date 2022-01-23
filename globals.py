@@ -52,6 +52,6 @@ class Dims:
 with open("wordle.txt", "r") as f:
     wordle_dictionary = f.readlines()
 dictionary = [word.strip() for word in wordle_dictionary[: Dims.OUTPUT]]
-print(dictionary)
+# print(dictionary)
 alphabet = "".join("abcdefghijklmnopqrstuvwxzy".upper().split())
 alphabet_dict = {letter: i for i, letter in enumerate(alphabet)}
