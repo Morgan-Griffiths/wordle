@@ -5,6 +5,7 @@ using DataStructures
 using DelimitedFiles
 using Distributed
 using ProgressMeter
+using Profile
 
 permutations = []
 for a in range(1, 3)
@@ -38,8 +39,8 @@ function evaluate_word(hidden_word::String,word::String)
     MISSING = 1
     CONTAINED = 2
     EXACT = 3
-    letter_result = zeros(5)
-    letter_freqs = DataStructures.DefaultDict(0)
+    letter_result = zeros(Int8,5)
+    letter_freqs = DataStructures.DefaultDict{Char,Int8}(0)
     for letter in hidden_word
         if letter in keys(letter_freqs)
             letter_freqs[letter] += 1
@@ -67,9 +68,9 @@ end
 
 
 function filter_words(current_words::Vector,guessed_word::String,results::Vector)
-    EXACT = 3.0
-    CONTAINED = 2.0
-    MISSING = 1.0
+    EXACT = 3
+    CONTAINED = 2
+    MISSING = 1
     remaining_words = []
     for word in current_words
         for (i, (letter, result)) in enumerate(zip(guessed_word, results))
@@ -93,47 +94,39 @@ function filter_words(current_words::Vector,guessed_word::String,results::Vector
 end
 
 function information(current_words::Integer,remaining_words::Integer)
-    if remaining_words == 0
-        return 0
-    end
+    remaining_words = max(remaining_words-1,1)
     probability = remaining_words / current_words
     return -log2(probability)
 end
 
 
 function create_first_order_result_distributions(dictionary::Vector{String})
+    N = length(dictionary)
     word_result_dist = Dict()
-    word_entropy_dist = DataStructures.DefaultDict([])
-    starting_information = information(length(dictionary), 1)
+    word_entropys = zeros(Float16,N)
+    starting_information = information(N, 1)
     println("starting_information = ",starting_information)
-    @showprogress for word in dictionary
-        hidden_word = word
+    @showprogress for (i,guess) in enumerate(dictionary)
         # hist_results = []
-        result_matrix = zeros(3 ^ 5)
-        for guess in dictionary
+        # result_matrix = zeros(3 ^ 5)
+        entropys = 0
+        for hidden_word in dictionary
             result = evaluate_word(hidden_word,guess)
+            # println("result",result)
             remaining_words = filter_words(dictionary, guess, result)
-            remaining_information = information(length(dictionary), length(remaining_words))
-            index = result_index_dict[Tuple(result)]
-            # println("remaining_information = ",remaining_information)
-            result_matrix[index] += 1
-            word_entropy = starting_information - remaining_information
-            # println("word_entropy = ",word_entropy)
-            push!(word_entropy_dist[guess],word_entropy)
+            # println("length(remaining_words)",length(remaining_words))
+            word_entropy = information(N, length(remaining_words))
+            # println("word_entropy",word_entropy)
+            # index = result_index_dict[Tuple(result)]
+            # result_matrix[index] += 1
+            # word_entropy = starting_information - remaining_information
+            entropys += word_entropy
         end
-        word_result_dist[word] = result_matrix
+        word_entropys[i] = entropys / N
+        # word_result_dist[hidden_word] = result_matrix
     end
-    best_word = ""
-    most_entropy = 0
-    println("Crunching entropies")
-    @showprogress for word in dictionary
-        word_entropy_dist[word] = sum(word_entropy_dist[word]) / length(word_entropy_dist[word])
-        if word_entropy_dist[word] > most_entropy
-            best_word = word
-            most_entropy = word_entropy_dist[word]
-        end
-    end
-    return word_result_dist, word_entropy_dist, best_word, most_entropy
+    (value,index) = findmax(word_entropys)
+    return word_entropys, dictionary[index], value
 end
 
 
@@ -158,10 +151,17 @@ dictionary = readdlm("wordle.txt", '\n', String, '\n')
 # ]
 # result = evaluate_word("AAHED","HELMS")
 # println("result = $result")
+# @profile filter_words(dictionary[1:500],"HELMS",result)
+# Profile.print()
+# result = evaluate_word("AAHED","HELMS")
+# println("result = $result")
 # remaining_words = filter_words(dictionary,"HELMS",result)
 # println("remaining_words = $remaining_words")
 
 # DIST
-word_result_dist, word_entropy_dist, best_word, most_entropy = create_first_order_result_distributions(dictionary[1:500])
-println("best_word = $best_word")
-println("most_entropy = $most_entropy")
+@profile create_first_order_result_distributions(dictionary[1:10])
+Profile.print()
+# word_entropy_dist, best_word, most_entropy = create_first_order_result_distributions(dictionary[1:end])
+# println("best_word = $best_word")
+# println("most_entropy = $most_entropy")
+# println("word_entropy_dist = $word_entropy_dist")
