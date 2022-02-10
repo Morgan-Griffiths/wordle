@@ -81,9 +81,9 @@ function filter_words(current_words::Vector,guessed_word::String,results::Vector
             # println("letter in word is",letter in word)
             if result == MISSING && letter in word
                 break
-            elseif result == EXACT && letter != word[i]
+            elseif result == CONTAINED && letter ∉ word || letter == word[i]
                 break
-            elseif result == CONTAINED && letter ∉ word
+            elseif result == EXACT && letter != word[i]
                 break
             elseif i == 4
                 push!(remaining_words,word)
@@ -159,9 +159,9 @@ dictionary = readdlm("wordle.txt", '\n', String, '\n')
 # println("remaining_words = $remaining_words")
 
 # DIST
-@profile create_first_order_result_distributions(dictionary[1:10])
-Profile.print()
-# word_entropy_dist, best_word, most_entropy = create_first_order_result_distributions(dictionary[1:end])
-# println("best_word = $best_word")
-# println("most_entropy = $most_entropy")
-# println("word_entropy_dist = $word_entropy_dist")
+# @profile create_first_order_result_distributions(dictionary[1:10])
+# Profile.print() 
+word_entropy_dist, best_word, most_entropy = create_first_order_result_distributions(dictionary[1:500])
+println("best_word = $best_word")
+println("most_entropy = $most_entropy")
+println("word_entropy_dist = $word_entropy_dist")

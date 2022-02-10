@@ -1,5 +1,3 @@
-from email.policy import default
-from unittest import result
 import numpy as np
 from copy import deepcopy
 from globals import (
@@ -43,6 +41,7 @@ class Wordle:
             raise ValueError("Not a real word. Nice try bozo")
         self.words.append(self.dictionary_word_to_index[word])
         result = self.evaluate_word(word)
+        self.update_state(result)
         self.update_alphabet(word, result)
         self.increment_turn()
         self.game_over = self.done(result)
@@ -58,7 +57,7 @@ class Wordle:
 
     def reward(self, result, game_over):
         if sum(result) == Tokens.EXACT * 5 and game_over:
-            return 1# - (self.gamma * (self.turn - 1))
+            return 1  # - (self.gamma * (self.turn - 1))
         elif game_over:
             return -1
         return 0
@@ -84,21 +83,13 @@ class Wordle:
                     update = Tokens.MISSING
             else:
                 update = Tokens.MISSING
-            self.update_state(
-                slot=i,
-                state=update,
-                letter=self.alphabet_dict[letter],
-                turn=self.turn,
-            )
             letter_result[i] = update
             letter_freqs[letter] = max(0, letter_freqs[letter] - 1)
         return letter_result
 
-    def update_state(self, slot, state, letter, turn):
-        # 5, 6, 3
-        self.state[turn, slot, Embeddings.LETTER] = letter
-        self.state[turn, slot, Embeddings.RESULT] = state
-        # self.state[turn, slot, Embeddings.WORD] = word_idx
+    def update_state(self, result):
+        # 6, 5, 2
+        self.state[self.turn, :, :] = result
 
     def visualize_state(self):
         letter_headers = [f"Letters_{i}" for i in range(5)]

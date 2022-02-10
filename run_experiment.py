@@ -9,7 +9,7 @@ from experiments.dataloader import return_dataloader
 from experiments.globals import actionSpace, DataTypes, NetworkConfig, dataMapping
 
 
-def train(data_dict, agent_params, training_params, dataset):
+def train(data_dict, agent_params, training_params, network_params, dataset):
     net = agent_params["network"](network_params)
     optimizer = optim.Adam(net.parameters(), lr=agent_params["learning_rate"])
     criterion = training_params["criterion"](reduction="sum")
@@ -21,6 +21,7 @@ def train(data_dict, agent_params, training_params, dataset):
         sys.stdout.write("\r")
         optimizer.zero_grad()
         outputs = net(torch.as_tensor(dataset["trainX"]).long())
+        # actions = outputs[-1]
         loss = criterion(outputs, torch.as_tensor(dataset["trainY"]).squeeze(-1))
         loss.backward()
         optimizer.step()
@@ -78,6 +79,10 @@ def train(data_dict, agent_params, training_params, dataset):
         # print(
         #     f"\nTraining loss {np.mean(score_window):.4f}, Val loss {np.mean(val_window):.4f}, Epoch {epoch}"
         # )
+
+    # outputs = net(torch.as_tensor(dataset["trainX"]).long())
+    # print(f"\n{outputs}")
+    # print(f'\n{dataset["trainY"]}')
     print(f"Saving weights to {training_params['load_path']}")
     torch.save(net.state_dict(), training_params["load_path"])
 
@@ -95,13 +100,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "-d",
         "--datatype",
-        default=DataTypes.CAPITALS,
+        default=DataTypes.WORDLE,
         type=str,
-        metavar=f"[{DataTypes.LETTERS},{DataTypes.CAPITALS}]",
+        metavar=f"[{DataTypes.LETTERS},{DataTypes.CAPITALS},{DataTypes.WORDLE},{DataTypes.MULTI_TARGET},{DataTypes.CONSTELLATION}]",
         help="Which dataset to train on",
     )
     parser.add_argument(
-        "-e", "--epochs", help="Number of training epochs", default=1, type=int
+        "-e", "--epochs", help="Number of training epochs", default=500, type=int
     )
     parser.add_argument(
         "--resume", help="resume training from an earlier run", action="store_true"
@@ -142,4 +147,4 @@ if __name__ == "__main__":
         dataset["valX"], dataset["valY"], category="classification"
     )
     data_dict = {"trainloader": trainloader, "valloader": valloader}
-    train(data_dict, agent_params, training_params, dataset)
+    train(data_dict, agent_params, training_params, network_params, dataset)

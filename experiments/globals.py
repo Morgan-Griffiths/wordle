@@ -1,5 +1,5 @@
 from torch.nn import CrossEntropyLoss, BCELoss, SmoothL1Loss
-from ML.networks import Letters, Captials
+from ML.networks import Letters, Captials, Reinforce, WordleTest, StateActionTransition
 
 
 class LearningCategories:
@@ -11,12 +11,20 @@ class LearningCategories:
 class DataTypes:
     CAPITALS = "capitals"
     LETTERS = "letters"
+    WORDLE = "wordle"
+    REINFORCE = "reinforce"
+    MULTI_TARGET = "multitarget"
+    CONSTELLATION = "constellation"
 
 
 class NetworkConfig(object):
     DataModels = {
         DataTypes.CAPITALS: Captials,
         DataTypes.LETTERS: Letters,
+        DataTypes.WORDLE: StateActionTransition,
+        DataTypes.REINFORCE: Reinforce,
+        DataTypes.MULTI_TARGET: WordleTest,
+        DataTypes.CONSTELLATION: WordleTest,
     }
     LossFunctions = {
         LearningCategories.MULTICLASS_CATEGORIZATION: CrossEntropyLoss,
@@ -28,6 +36,17 @@ class NetworkConfig(object):
 dataMapping = {
     DataTypes.CAPITALS: LearningCategories.MULTICLASS_CATEGORIZATION,
     DataTypes.LETTERS: LearningCategories.MULTICLASS_CATEGORIZATION,
+    DataTypes.WORDLE: LearningCategories.MULTICLASS_CATEGORIZATION,
+    DataTypes.REINFORCE: LearningCategories.MULTICLASS_CATEGORIZATION,
+    DataTypes.MULTI_TARGET: LearningCategories.MULTICLASS_CATEGORIZATION,
+    DataTypes.CONSTELLATION: LearningCategories.MULTICLASS_CATEGORIZATION,
 }
 
-actionSpace = {DataTypes.LETTERS: 26, DataTypes.CAPITALS: 52}
+actionSpace = {
+    DataTypes.LETTERS: 26,
+    DataTypes.CAPITALS: 52,
+    DataTypes.WORDLE: 5,
+    DataTypes.REINFORCE: 5,
+    DataTypes.MULTI_TARGET: 5,
+    DataTypes.CONSTELLATION: 5,
+}

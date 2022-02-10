@@ -1,14 +1,21 @@
 from re import T
-from ML.agent import Agent
+from ML.agents.base_agent import Agent
+from ML.agents.q_agent import Q_agent
+from ML.agents.ppo import PPO_agent
+from ML.agents.p_agent import P_agent
+from ML.agents.mu_agent import MuAgent
+from config import Config
 from wordle import Wordle
-from ML.networks import Policy
-from globals import Models, Outputs, Results, Tokens, Dims, AgentData, dictionary
+from globals import Models, Outputs, Results, Tokens, Dims, AgentData, Train, dictionary
 import torch
-from plot import plot_data, plot_frequencies, plot_values
+from plot import plot_data, plot_frequencies, plot_q_values
 import sys
 import os
 import numpy as np
-from utils import store_outputs, store_state, return_rewards
+from utils import shape_values_to_q_values, store_outputs, store_state, return_rewards
+from train import train, train_dynamics, train_mcts
+
+SET_WORD = "AALII"
 
 
 def play_wordle():
@@ -29,98 +36,51 @@ def play_wordle():
         print(result, reward, done)
 
 
-def main(resume, model):
-    seed = 1234
+def return_agent(model):
+    config = Config()
+    params = {"nA": Dims.OUTPUT}
+    if model == Models.Q_LEARNING:
+        agent = Q_agent(params, config)
+    elif model == Models.AC_LEARNING:
+        agent = P_agent(params, config)
+    elif model == Models.PPO:
+        agent = PPO_agent(params, config)
+    elif model == Models.POLICY:
+        agent = P_agent(params, config)
+    elif model == Models.MUZERO:
+        agent = MuAgent(config)
+    return agent
+
+
+def main(resume, model, epochs: int, train_type: str):
     env = Wordle()
-    agent = Agent(Dims.OUTPUT, seed, model)
+    agent = return_agent(model)
     if resume:
         agent.load_weights("weights/test")
     training_params = {
-        "epochs": 500,
-        "evaluation_epochs": 100,
+        "epochs": epochs,
+        "evaluation_epochs": 250,
         "eval_every": 50,
         "save_dir": "weights",
         "agent_name": "test",
     }
-    training_results: dict = train(env, agent, training_params)
+    if train_type == Train.MCTS:
+        training_results: dict = train_mcts(env, agent, training_params)
+    elif train_type == Train.REGULAR:
+        training_results: dict = train(env, agent, training_params)
+    elif train_type == Train.DYNAMICS:
+        training_results: dict = train_dynamics(env, agent, training_params)
+    else:
+        raise ValueError(f"Unknown training type {train_type}")
 
     plot_data("Training reward", [training_results[Results.LOSSES]], "loss")
     plot_frequencies(
         "Word freqs over time", training_results[Results.ACTION_PROBS], dictionary
     )
-    plot_values("Values over time", training_results[Results.VALUES], dictionary)
-
-
-def train(env: Wordle, agent: Agent, training_params: dict) -> dict:
-    training_results = {
-        Results.LOSSES: [],
-        Results.VALUES: [],
-        Results.ACTION_PROBS: [],
-    }
-    agent.train()
-    loss = -1
-    for e in range(training_params["epochs"]):
-        data_params = {
-            AgentData.STATES: [],
-            AgentData.ACTIONS: [],
-            AgentData.ACTION_PROBS: [],
-            AgentData.VALUES: [],
-            AgentData.REWARDS: [],
-            AgentData.DONES: [],
-        }
-        sys.stdout.write("\r")
-        state, reward, done = env.reset()
-        env.word = "AAHED"
-        data_params = store_state(data_params, state=state, done=done)
-        while not done:
-            outputs: dict = agent(state)
-            data_params = store_outputs(data_params, outputs)
-            state, reward, done = env.step(outputs[Outputs.WORD])
-            data_params = store_state(data_params, state=state, done=done)
-        training_results[Results.VALUES].append(
-            outputs[Outputs.VALUES].detach().squeeze(0).numpy()
-        )
-        training_results[Results.ACTION_PROBS].append(
-            outputs[Outputs.ACTION_PROBS].detach().squeeze(0).numpy()
-        )
-        rewards = return_rewards(env.turn, reward)
-        data_params[AgentData.REWARDS].extend(rewards)
-        agent.learn(data_params)
-        sys.stdout.write(
-            "[%-60s] %d%%"
-            % (
-                "=" * (60 * (e + 1) // training_params["epochs"]),
-                (100 * (e + 1) // training_params["epochs"]),
-            )
-        )
-        sys.stdout.flush()
-        sys.stdout.write(f", epoch {e + 1}")
-        sys.stdout.flush()
-        sys.stdout.write(f", avg reward {round(np.mean(training_results['losses']),4)}")
-        sys.stdout.flush()
-        if e % training_params["eval_every"] == 0:
-            agent.save_weights(
-                os.path.join(training_params["save_dir"], training_params["agent_name"])
-            )
-            loss = evaluate(env, agent, training_params)
-            training_results[Results.LOSSES].append(loss)
-    training_results[Results.VALUES] = np.vstack(training_results[Results.VALUES])
-    training_results[Results.ACTION_PROBS] = np.vstack(
-        training_results[Results.ACTION_PROBS]
+    data = shape_values_to_q_values(
+        training_results[Results.VALUES], training_results[Results.ACTIONS]
     )
-    return training_results
-
-
-def evaluate(env, agent, training_params):
-    agent.evaluate()
-    loss = []
-    for e in range(training_params["evaluation_epochs"]):
-        state, reward, done = env.reset()
-        while not done:
-            outputs: dict = agent(state)
-            state, reward, done = env.step(outputs["word"])
-        loss.append(reward)
-    return np.mean(loss)
+    # plot_q_values("Values over time", data, dictionary)
 
 
 if __name__ == "__main__":
@@ -143,10 +103,27 @@ if __name__ == "__main__":
         "--model",
         "-m",
         dest="model",
-        metavar="[q_learning,ac_learning]",
-        default=Models.Q_LEARNING,
+        metavar=f"[{Models.Q_LEARNING},{Models.AC_LEARNING},{Models.PPO},{Models.POLICY},{Models.MUZERO}]",
+        default=Models.MUZERO,
         help="which model",
+    )
+    parser.add_argument(
+        "--epochs",
+        "-e",
+        dest="epochs",
+        default=5000,
+        type=int,
+        help="training epochs",
+    )
+    parser.add_argument(
+        "--train_type",
+        "-t",
+        dest="train_type",
+        default=Train.DYNAMICS,
+        type=str,
+        metavar=f"{Train.REGULAR},{Train.MCTS},{Train.DYNAMICS}",
+        help="training style",
     )
     args = parser.parse_args()
 
-    main(args.resume, args.model)
+    main(args.resume, args.model, args.epochs, args.train_type)

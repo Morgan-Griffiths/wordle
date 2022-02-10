@@ -1,7 +1,9 @@
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 import os
+import numpy as np
 
-COLORS = ["g", "b", "m", "r", "y"]
+COLORS = list(mcolors.TABLEAU_COLORS)
 
 
 def plot_data(title: str, data: list, labels: list, path="assets/"):
@@ -20,7 +22,22 @@ def plot_data(title: str, data: list, labels: list, path="assets/"):
     plt.close()
 
 
-def plot_values(title: str, data: list, action_labels: list, path="assets/"):
+def plot_hist(title: str, data: list, path="assets/"):
+    print(path + title)
+    # for i, data_group in enumerate(data):
+    plt.hist(data,bins=243)
+    plt.title(title)
+    plt.xlabel("Result")
+    plt.ylabel("Count")
+    plt.legend()
+    directory = os.path.dirname(path)
+    if not os.path.exists(directory):
+        os.mkdir(directory)
+    plt.savefig(f"{path+title}.png", bbox_inches="tight")
+    plt.close()
+
+
+def plot_q_values(title: str, data: list, action_labels: list, path="assets/"):
     print(path + title)
     print(f"data dimensions: {data.shape}")
     print(f"action_labels: {len(action_labels)}")
@@ -30,14 +47,13 @@ def plot_values(title: str, data: list, action_labels: list, path="assets/"):
     fig, axs = plt.subplots(len(action_labels))
     barWidth = 1
     for i in range(len(action_labels)):
-        if len(action_labels) == 5:
-            axs[i].plot(
-                epochs,
-                data[:, i],
-                color=COLORS[i],
-                label=action_labels[i],
-                # width=barWidth,
-            )
+        axs[i].plot(
+            epochs,
+            data[:, i],
+            color=COLORS[i],
+            label=action_labels[i],
+            # width=barWidth,
+        )
         axs[i].grid(True)
         axs[i].set_title(f"{action_labels[i]}")
         # axs[i].set_xlabel('Epochs')
