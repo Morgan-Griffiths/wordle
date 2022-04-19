@@ -20,6 +20,9 @@ class Config:
     epsilon = 0.2
     beta = 0.01
     # MUZERO
+    value_loss_weight = 0.25
+    weight_decay = 0.1
+    lr_init = 1e-3
     pb_c_base = 19652
     pb_c_init = 1.25
     root_exploration_fraction = 0.25

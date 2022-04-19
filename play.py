@@ -3,6 +3,7 @@ import copy
 import sys
 import torch
 import torch.nn as nn
+import torch.multiprocessing as mp
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import MultiStepLR, StepLR
 from torch import optim
@@ -238,9 +239,9 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     print("Number of processors: ", mp.cpu_count())
-    print(f'Number of GPUs: {torch.cuda.device_count()}')
+    print(f"Number of GPUs: {torch.cuda.device_count()}")
 
-    ray.init(torch.cuda.device_count())
+    ray.init()
 
     config = Config()
     env = Wordle(word_restriction=5)
@@ -275,7 +276,8 @@ if __name__ == "__main__":
     if training_params["resume"]:
         print(f'loading network from {training_params["load_path"]}')
         mu_agent.load_state_dict(torch.load(training_params["load_path"]))
-    test_mcts_training(env, mcts, mu_agent, config, params, training_params)
+    # test_mcts_training(env, mcts, mu_agent, config, params, training_params)
+    ray.shutdown()
 
 # test_state4 = torch.tensor(
 #     [
