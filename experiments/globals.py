@@ -1,5 +1,5 @@
 from torch.nn import CrossEntropyLoss, BCELoss, SmoothL1Loss
-from ML.networks import Letters, Captials, Reinforce, WordleTest, StateActionTransition
+from ML.networks import Threshold, StateActionTransition, ZeroPolicy
 
 
 class LearningCategories:
@@ -9,22 +9,18 @@ class LearningCategories:
 
 
 class DataTypes:
-    CAPITALS = "capitals"
-    LETTERS = "letters"
+    THRESHOLD = "threshold"
     WORDLE = "wordle"
-    REINFORCE = "reinforce"
-    MULTI_TARGET = "multitarget"
-    CONSTELLATION = "constellation"
+    RANDOM = "random"
+    POLICY = "policy"
 
 
 class NetworkConfig(object):
     DataModels = {
-        DataTypes.CAPITALS: Captials,
-        DataTypes.LETTERS: Letters,
+        DataTypes.THRESHOLD: Threshold,
         DataTypes.WORDLE: StateActionTransition,
-        DataTypes.REINFORCE: Reinforce,
-        DataTypes.MULTI_TARGET: WordleTest,
-        DataTypes.CONSTELLATION: WordleTest,
+        DataTypes.RANDOM: StateActionTransition,
+        DataTypes.POLICY: ZeroPolicy,
     }
     LossFunctions = {
         LearningCategories.MULTICLASS_CATEGORIZATION: CrossEntropyLoss,
@@ -34,19 +30,15 @@ class NetworkConfig(object):
 
 
 dataMapping = {
-    DataTypes.CAPITALS: LearningCategories.MULTICLASS_CATEGORIZATION,
-    DataTypes.LETTERS: LearningCategories.MULTICLASS_CATEGORIZATION,
+    DataTypes.THRESHOLD: LearningCategories.MULTICLASS_CATEGORIZATION,
     DataTypes.WORDLE: LearningCategories.MULTICLASS_CATEGORIZATION,
-    DataTypes.REINFORCE: LearningCategories.MULTICLASS_CATEGORIZATION,
-    DataTypes.MULTI_TARGET: LearningCategories.MULTICLASS_CATEGORIZATION,
-    DataTypes.CONSTELLATION: LearningCategories.MULTICLASS_CATEGORIZATION,
+    DataTypes.RANDOM: LearningCategories.MULTICLASS_CATEGORIZATION,
+    DataTypes.POLICY: LearningCategories.MULTICLASS_CATEGORIZATION,
 }
 
 actionSpace = {
-    DataTypes.LETTERS: 26,
-    DataTypes.CAPITALS: 52,
+    DataTypes.THRESHOLD: 7,
     DataTypes.WORDLE: 5,
-    DataTypes.REINFORCE: 5,
-    DataTypes.MULTI_TARGET: 5,
-    DataTypes.CONSTELLATION: 5,
+    DataTypes.RANDOM: 5,
+    DataTypes.POLICY: 5,
 }

@@ -1,5 +1,4 @@
 import torch
-from ML.agent import Agent
 from ML.agents.ppo import PPO_agent
 from globals import AgentData, Dims, Outputs
 from wordle import Wordle

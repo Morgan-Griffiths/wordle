@@ -38,7 +38,13 @@ def play_wordle():
 
 def return_agent(model):
     config = Config()
-    params = {"nA": Dims.OUTPUT}
+
+    params = {
+        "seed": 346,
+        "nA": Dims.OUTPUT,
+        "load_path": "weights/represent",
+        "emb_size": 16,
+    }
     if model == Models.Q_LEARNING:
         agent = Q_agent(params, config)
     elif model == Models.AC_LEARNING:
@@ -48,7 +54,7 @@ def return_agent(model):
     elif model == Models.POLICY:
         agent = P_agent(params, config)
     elif model == Models.MUZERO:
-        agent = MuAgent(config)
+        agent = MuAgent(params, config)
     return agent
 
 

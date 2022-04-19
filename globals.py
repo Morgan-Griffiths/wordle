@@ -1,4 +1,7 @@
+from dataclasses import dataclass
 from typing import Any, NamedTuple
+import numpy as np
+import torch
 
 
 class Tokens:
@@ -63,10 +66,12 @@ class State:
 
 class Dims:
     INPUT = 26
-    OUTPUT = 12972
+    OUTPUT = 500
     HIDDEN_STATE = 128
     RESULT_STATE = 243
     EMBEDDING_SIZE = 8
+    TRANSFORMER_INPUT = 40  # 5 * EMBEDDING_SIZE
+    TRANSFORMER_OUTPUT = 500
     PROCESSED = EMBEDDING_SIZE * 31
 
 
@@ -87,7 +92,22 @@ class NetworkOutput(NamedTuple):
     result_logits: Any
 
 
-with open("wordle.txt", "r") as f:
+@dataclass
+class DynamicOutputs:
+    next_state: torch.tensor
+    state_probs: torch.tensor
+    reward: int
+    rewards: np.array
+
+
+@dataclass
+class PolicyOutputs:
+    action: int
+    probs: torch.tensor
+    value: float
+
+
+with open("data/allowed_words.txt", "r") as f:
     wordle_dictionary = f.readlines()
 
 permutations = []
@@ -101,6 +121,7 @@ result_index_dict = {dist: i for i, dist in enumerate(permutations)}
 index_result_dict = {i: dist for dist, i in result_index_dict.items()}
 dictionary = [word.strip() for word in wordle_dictionary]
 dictionary = dictionary[: Dims.OUTPUT]
+dictionary_arr = np.vstack([list(word) for word in dictionary])
 # dictionary = [
 #     "MOUNT",
 #     "HELLO",

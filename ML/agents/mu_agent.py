@@ -30,15 +30,15 @@ def update_state(result, old_state, action):
 
 
 class MuAgent:
-    def __init__(self, config: Config):
+    def __init__(self, params, config: Config):
         self.dictionary = {i: word.strip() for i, word in enumerate(dictionary)}
         self.nA = Dims.OUTPUT
         self.gradient_clip = config.gradient_clip
         self.seed = config.seed
         self.config = config
         self.criterion = CrossEntropyLoss()
-        self.network = MuZeroNet(config, output_dims=Dims.OUTPUT)
-        self.target_network = MuZeroNet(config, output_dims=Dims.OUTPUT)
+        self.network = MuZeroNet(config, params, output_dims=Dims.OUTPUT)
+        self.target_network = MuZeroNet(config, params, output_dims=Dims.OUTPUT)
         self.optimizer = torch.optim.Adam(self.network.parameters(), lr=1e-4)
         # Copy the weights from local to target
         hard_update(self.network, self.target_network)

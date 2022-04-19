@@ -1,5 +1,9 @@
 # Wordle
 
+TODO
+find threshold network for muzero state transition
+assert muzero state transitions work
+
 deep learning environment for training bots on the game wordle.
 
 # test

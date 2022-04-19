@@ -2,6 +2,16 @@ import torch
 import os
 
 
+def reward_over_states(last_turn: torch.tensor):
+    """Returns rewards over next states"""
+    B = last_turn.shape[0]
+    rewards = torch.zeros((B, 243))
+    last_mask = torch.where(last_turn == 1)[0]
+    rewards[:, -1] = 1
+    rewards[last_mask, :-1] = -1
+    return rewards
+
+
 def load_weights(network, path):
     network.load_state_dict(torch.load(path))
     network.eval()

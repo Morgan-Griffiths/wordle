@@ -66,14 +66,45 @@ function evaluate_word(hidden_word::String,word::String)
     return letter_result
 end
 
+function filter_words_single_pass(word_arr:: Array{String,2}, guessed_word:: String, results::Vector)
+    MISSING = 1
+    CONTAINED = 2
+    EXACT = 3
+    remaining_words = []
+    for (i, (letter, result)) in enumerate(zip(guessed_word, results))
+        letter = string(letter)
+        if result == MISSING
+            # remove all words
+            a = word_arr[:, 1] .!= letter
+            b = word_arr[:, 2] .!= letter
+            c = word_arr[:, 3] .!= letter
+            d = word_arr[:, 4] .!= letter
+            e = word_arr[:, 5] .!= letter
+            mask = a .& b .& c .& d .& e
+            word_arr = word_arr[mask,:]
+        elseif result == EXACT
+            mask = word_arr[:, i] .== letter
+            word_arr = word_arr[mask,:]
+        elseif result == CONTAINED
+            numbers = [num for num in range(5) if num != i]
+            a = word_arr[:, numbers[1]] .== letter
+            b = word_arr[:, numbers[2]] .== letter
+            c = word_arr[:, numbers[3]] .== letter
+            d = word_arr[:, numbers[4]] .== letter
+            mask = a .| b .| c .| d
+            word_arr = word_arr[mask,:]
+        end
+    end
+    return remaining_words
+end
 
 function filter_words(current_words::Vector,guessed_word::String,results::Vector)
-    EXACT = 3
-    CONTAINED = 2
     MISSING = 1
+    CONTAINED = 2
+    EXACT = 3
     remaining_words = []
     for word in current_words
-        for (i, (letter, result)) in enumerate(zip(guessed_word, results))
+        for (i,(letter, result)) in enumerate(zip(guessed_word, results))
             # println("result == MISSING is",result == MISSING)
             # println("result == CONTAINED is",result == CONTAINED)
             # println("result == EXACT is",result == EXACT)
@@ -81,7 +112,7 @@ function filter_words(current_words::Vector,guessed_word::String,results::Vector
             # println("letter in word is",letter in word)
             if result == MISSING && letter in word
                 break
-            elseif result == CONTAINED && letter ∉ word || letter == word[i]
+            elseif result == CONTAINED && (letter ∉ word || letter == word[i])
                 break
             elseif result == EXACT && letter != word[i]
                 break
@@ -104,9 +135,9 @@ function create_first_order_result_distributions(dictionary::Vector{String})
     N = length(dictionary)
     word_result_dist = Dict()
     word_entropys = zeros(Float16,N)
-    starting_information = information(N, 1)
-    println("starting_information = ",starting_information)
-    @showprogress for (i,guess) in enumerate(dictionary)
+    # starting_information = information(N, 1)
+    # println("starting_information = ",starting_information)
+    for (i,guess) in enumerate(dictionary)
         # hist_results = []
         # result_matrix = zeros(3 ^ 5)
         entropys = 0
@@ -130,8 +161,47 @@ function create_first_order_result_distributions(dictionary::Vector{String})
 end
 
 
-dictionary = readdlm("wordle.txt", '\n', String, '\n')
-# println("dictionary = ",typeof(dictionary))
+function distribution_comparison(dictionary::Array{String,2})
+    N = length(dictionary)
+    word_result_dist = Dict()
+    word_entropys = zeros(Float16,N)
+    # starting_information = information(N, 1)
+    # println("starting_information = ",starting_information)
+    for (i,guess) in enumerate(dictionary)
+        # hist_results = []
+        # result_matrix = zeros(3 ^ 5)
+        entropys = 0
+        for hidden_word in dictionary
+            result = evaluate_word(hidden_word,guess)
+            # println("result",result)
+            remaining_words = filter_words_single_pass(dictionary, guess, result)
+            # println("length(remaining_words)",length(remaining_words))
+            word_entropy = information(N, length(remaining_words))
+            # println("word_entropy",word_entropy)
+            # index = result_index_dict[Tuple(result)]
+            # result_matrix[index] += 1
+            # word_entropy = starting_information - remaining_information
+            entropys += word_entropy
+        end
+        word_entropys[i] = entropys / N
+        # word_result_dist[hidden_word] = result_matrix
+    end
+    (value,index) = findmax(word_entropys)
+    return word_entropys, dictionary[index], value
+end
+
+
+
+dictionary = readdlm("data/allowed_words.txt", '\n', String, '\n')
+dictionary_nd = Array{String,2}(undef,length(dictionary),5)
+for (i,word) in enumerate(dictionary)
+    vec = Vector{String}(split(word,"")) 
+    for (j,letter) in enumerate(vec)
+        dictionary_nd[i,j] = letter
+    end
+end
+# println("dictionary_nd = ",size(dictionary_nd))
+# println("dictionary_nd = ",size(dictionary_nd[1:250,:]))
 # result = evaluate_word("HELLO","HELMS")
 # println("result = $result")
 # println("dictionary = ",length(dictionary[1:end]))
@@ -159,9 +229,10 @@ dictionary = readdlm("wordle.txt", '\n', String, '\n')
 # println("remaining_words = $remaining_words")
 
 # DIST
-# @profile create_first_order_result_distributions(dictionary[1:10])
+# @time create_first_order_result_distributions(dictionary[1:100])
+# @time distribution_comparison(dictionary_nd[1:100,:])
 # Profile.print() 
-word_entropy_dist, best_word, most_entropy = create_first_order_result_distributions(dictionary[1:500])
-println("best_word = $best_word")
-println("most_entropy = $most_entropy")
-println("word_entropy_dist = $word_entropy_dist")
+# word_entropy_dist, best_word, most_entropy = create_first_order_result_distributions(dictionary[1:10])
+# println("best_word = $best_word")
+# println("most_entropy = $most_entropy")
+# println("word_entropy_dist = $word_entropy_dist")

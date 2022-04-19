@@ -24,5 +24,5 @@ class Config:
     pb_c_init = 1.25
     root_exploration_fraction = 0.25
     root_dirichlet_alpha = 0.25
-    num_simulations = 50
+    num_simulations = 10
     revisit_policy_search_rate = 0

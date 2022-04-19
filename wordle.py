@@ -19,9 +19,12 @@ from prettytable import PrettyTable
 
 
 class Wordle:
-    def __init__(self) -> None:
+    def __init__(self, word_restriction=None) -> None:
         super().__init__()
-        self.dictionary = dictionary
+        if word_restriction is not None:
+            self.dictionary = dictionary[:word_restriction]
+        else:
+            self.dictionary = dictionary
         self.alphabet_dict = alphabet_dict
         self.dictionary_word_to_index = dictionary_word_to_index
         self.gamma = 0.05
@@ -58,7 +61,7 @@ class Wordle:
 
     def reward(self, result, game_over):
         if sum(result) == Tokens.EXACT * 5 and game_over:
-            return 1# - (self.gamma * (self.turn - 1))
+            return 1  # - (self.gamma * (self.turn - 1))
         elif game_over:
             return -1
         return 0
@@ -69,7 +72,7 @@ class Wordle:
         return False
 
     def evaluate_word(self, word):
-        """0: not contained, 1: wrong spot, 2: right spot, 3:unknown"""
+        """0:unknown, 1: not contained, 2: wrong spot, 3: right spot"""
         letter_result = np.zeros(5)
         letter_freqs = defaultdict(lambda: 0)
         for letter in self.word:
