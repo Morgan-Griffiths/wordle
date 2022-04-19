@@ -16,10 +16,12 @@ from globals import (
     Embeddings,
     PolicyOutputs,
     dictionary_index_to_word,
+    dictionary_word_to_index,
     result_index_dict,
     index_result_dict,
 )
 import os
+import ray
 
 
 def create_root(state, reward):
@@ -104,13 +106,15 @@ def test_mcts_training(env, mcts: MCTS, mu_agent, config, params, training_param
             actions = []
             results = []
             reward_targets = []
+            word_targets = []
             for _ in range(training_params["trajectories"]):
                 state, reward, done = env.reset()
                 states.append(copy.deepcopy(state))
+                word_targets.append(dictionary_word_to_index[env.word])
                 # print("turn", env.turn)
                 # print(env.word)
                 while not done:
-                    root = create_root(state, reward)
+                    root = create_root(torch.as_tensor(state).long(), reward)
                     mcts.run(root, mu_agent)
                     # get chosen action
                     action, _ = root.select_child(config)
@@ -119,9 +123,10 @@ def test_mcts_training(env, mcts: MCTS, mu_agent, config, params, training_param
                     results.append(state[env.turn - 1, :, Embeddings.RESULT])
                     if not done:
                         states.append(copy.deepcopy(state))
+                        word_targets.append(dictionary_word_to_index[env.word])
 
                 reward_targets.extend(
-                    [reward * 0.95 ** i for i in range(env.turn)][::-1]
+                    [reward * config.discount_rate ** i for i in range(env.turn)][::-1]
                 )
                 # shape inputs
             states, actions, result_targets, reward_targets = prepare_inputs(
@@ -232,6 +237,10 @@ if __name__ == "__main__":
         help="number of trajectory samples to get",
     )
     args = parser.parse_args()
+    print("Number of processors: ", mp.cpu_count())
+    print(f'Number of GPUs: {torch.cuda.device_count()}')
+
+    ray.init(torch.cuda.device_count())
 
     config = Config()
     env = Wordle(word_restriction=5)
@@ -243,16 +252,16 @@ if __name__ == "__main__":
         "load_path": "weights/muzero",
         "resume": args.resume,
         "skip_training": args.skip_training,
+        "learning_rate": 1e-3,
     }
-    learning_params = {"learning_rate": 1e-3}
     params = {
         "dynamics_optimizer": optim.Adam(
             mu_agent._dynamics.parameters(),
-            lr=learning_params["learning_rate"],
+            lr=training_params["learning_rate"],
         ),
         "policy_optimizer": optim.Adam(
             mu_agent._policy.parameters(),
-            lr=learning_params["learning_rate"],
+            lr=training_params["learning_rate"],
             weight_decay=config.L2,
         ),
     }

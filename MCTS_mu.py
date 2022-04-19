@@ -192,7 +192,7 @@ class MCTS:
                 )
                 node = node.children[state_choice]
                 node.reward = int(reward.item())
-                node.state = torch.as_tensor(next_state)
-            outputs: PolicyOutputs = agent.policy(to_tensor(node.state))
+                node.state = torch.as_tensor(next_state).long()
+            outputs: PolicyOutputs = agent.policy(node.state)
             # print(outputs)
             node.backprop(outputs.value.item(), self.config)

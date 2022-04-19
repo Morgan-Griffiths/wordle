@@ -12,7 +12,7 @@ class Config:
     update_every = 4
     learning_update = 0
     # ppo
-    discount_rate = 0.995
+    discount_rate = 0.85
     gae_lambda = 0.95
     num_agents = 1
     SGD_epoch = 10
