@@ -16,6 +16,7 @@ from ML.networks import MuZeroNet
 from wordle import Wordle
 import math
 import torch
+from ray_files.mcts_containers import GameHistory
 
 """ 
 MuZero MCTS:
@@ -127,72 +128,67 @@ class Node:
 
 class MCTS:
     def __init__(self, config) -> None:
-        self.epsilon = 1
+        self.epsilon = 0.5
         self.config = config
 
     def decay_epsilon(self):
         self.epsilon = max(0, self.epsilon * 0.999)
 
     def run(self, root: Node, agent: MuZeroNet):
-        for _ in range(self.config.num_simulations):
-            node: Node = root
-            while node.reward not in [1, -1]:
-                if node.action_probs is None:
-                    outputs: PolicyOutputs = agent.policy(node.state)
-                    node.action_probs = outputs.probs[0]
-                # pick action
-                # print(len(node.children), node.expanded())
-                # if len(node.children) == self.config.ubc_start:
-                #     # ucb pick
-                #     action, node = node.select_child(self.config)
-                # else:
-                if np.random.random() < self.epsilon:
-                    # random action
-                    action = np.random.randint(5)
-                else:
-                    # network picks
-                    action = np.random.choice(
-                        len(node.state_probs), p=node.action_probs
+        with torch.no_grad():
+            for _ in range(self.config.num_simulations):
+                node: Node = root
+                while node.reward not in [1, -1]:
+                    if node.action_probs is None:
+                        outputs: PolicyOutputs = agent.policy(node.state)
+                        node.action_probs = outputs.probs[0]
+                    # pick action
+                    # print(len(node.children), node.expanded())
+                    # if len(node.children) == self.config.ubc_start:
+                    #     # ucb pick
+                    #     action, node = node.select_child(self.config)
+                    # else:
+                    if np.random.random() < self.epsilon:
+                        # random action
+                        action = np.random.randint(5)
+                    else:
+                        # network picks
+                        action = np.random.choice(
+                            len(node.state_probs), p=node.action_probs
+                        )
+                    # if action previous unexplored, expand node
+                    if action not in node.children:
+                        node.children[action] = Node(
+                            parent=node, prior=node.action_probs[action]
+                        )
+                        outputs: DynamicOutputs = agent.dynamics(
+                            node.state, torch.as_tensor(action).unsqueeze(0)
+                        )
+                        node.children[
+                            action
+                        ].state_probs = outputs.state_probs.numpy()[0]
+                        node.children[action].reward_outcomes = outputs.rewards[0]
+                    node: Node = node.children[action]
+                    # sample state after
+                    state_choice = np.random.choice(
+                        len(node.state_probs), p=node.state_probs
                     )
-                # action = torch.as_tensor(action).unsqueeze(0)
-                # print(dictionary_index_to_word[action.item()])
-                # if action previous unexplored, expand node
-                if action not in node.children:
-                    node.children[action] = Node(
-                        parent=node, prior=node.action_probs[action]
+                    result, reward = (
+                        index_result_dict[state_choice],
+                        node.reward_outcomes[state_choice],
                     )
-                    outputs: DynamicOutputs = agent.dynamics(
-                        node.state, torch.as_tensor(action).unsqueeze(0)
+                    # get previous state -> new state
+                    next_state = state_transition(
+                        node.parent.state.numpy(),
+                        dictionary_index_to_word[action],
+                        np.array(result),
                     )
-                    node.children[
-                        action
-                    ].state_probs = outputs.state_probs.detach().numpy()[0]
-                    node.children[action].reward_outcomes = outputs.rewards[0]
-                node: Node = node.children[action]
-                # sample state after
-                state_choice = np.random.choice(
-                    len(node.state_probs), p=node.state_probs
-                )
-                result, reward = (
-                    index_result_dict[state_choice],
-                    node.reward_outcomes[state_choice],
-                )
-                # print("result", result)
-                # print("reward", reward)
-                # print("word", dictionary_index_to_word[action.item()])
-                # get previous state -> new state
-                next_state = state_transition(
-                    node.parent.state.numpy(),
-                    dictionary_index_to_word[action],
-                    np.array(result),
-                )
-                # print("next_state", next_state)
-                node.children[state_choice] = Node(
-                    parent=node, prior=node.state_probs[state_choice]
-                )
-                node = node.children[state_choice]
-                node.reward = int(reward.item())
-                node.state = torch.as_tensor(next_state).long()
-            outputs: PolicyOutputs = agent.policy(node.state)
-            # print(outputs)
-            node.backprop(outputs.value.item(), self.config)
+                    # print("next_state", next_state)
+                    node.children[state_choice] = Node(
+                        parent=node, prior=node.state_probs[state_choice]
+                    )
+                    node = node.children[state_choice]
+                    node.reward = int(reward.item())
+                    node.state = torch.as_tensor(next_state).long()
+                outputs: PolicyOutputs = agent.policy(node.state)
+                node.backprop(outputs.value.item(), self.config)
