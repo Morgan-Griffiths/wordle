@@ -70,13 +70,14 @@ class ReplayBuffer:
     def get_batch(self):
         (
             index_batch,
-            observation_batch,
+            state_batch,
             action_batch,
             reward_batch,
+            result_batch,
             value_batch,
             policy_batch,
             gradient_scale_batch,
-        ) = ([], [], [], [], [], [], [])
+        ) = ([], [], [], [], [], [], [], [])
         weight_batch = [] if self.config.PER else None
 
         for game_id, game_history, game_prob in self.sample_n_games(
@@ -89,7 +90,7 @@ class ReplayBuffer:
             )
 
             index_batch.append([game_id, game_pos])
-            observation_batch.append(
+            state_batch.append(
                 game_history.get_stacked_observations(
                     game_pos,
                     self.config.stacked_observations,
@@ -117,7 +118,7 @@ class ReplayBuffer:
                 weight_batch
             )
 
-        # observation_batch: batch, channels, height, width
+        # state_batch: batch, channels, height, width
         # action_batch: batch, num_unroll_steps+1
         # value_batch: batch, num_unroll_steps+1
         # reward_batch: batch, num_unroll_steps+1
@@ -127,7 +128,7 @@ class ReplayBuffer:
         return (
             index_batch,
             (
-                observation_batch,
+                state_batch,
                 action_batch,
                 value_batch,
                 reward_batch,

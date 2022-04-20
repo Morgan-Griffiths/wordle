@@ -39,6 +39,11 @@ class Trainer:
                 copy.deepcopy(initial_checkpoint["optimizer_state"])
             )
 
+def update_lr(self):
+    lr =  self.config.lr_init * self.lr_decay_rate ** (self.training_step / self.config.lr_decay_rate)
+    for param_group in self.optimizer.param_groups:
+        param_group['lr'] = lr
+
 
 def update_weights(self, batch):
     """
