@@ -11,14 +11,7 @@ class Config:
     L2 = 0.1
     update_every = 4
     learning_update = 0
-    # ppo
-    discount_rate = 0.85
-    gae_lambda = 0.95
-    num_agents = 1
-    SGD_epoch = 10
-    tmax = 320
-    epsilon = 0.2
-    beta = 0.01
+    PER = True
     # MUZERO
     value_loss_weight = 0.25
     weight_decay = 0.1
