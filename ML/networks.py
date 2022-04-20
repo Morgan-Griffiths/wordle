@@ -33,6 +33,16 @@ ROW_EMB = nn.Embedding(6, Dims.EMBEDDING_SIZE)
 COL_EMB = nn.Embedding(5, Dims.EMBEDDING_SIZE)
 TURN_EMB = nn.Embedding(6, Dims.EMBEDDING_SIZE)
 
+def dict_to_cpu(dictionary):
+    cpu_dict = {}
+    for key,value in dictionary.items():
+        if isinstance(value, torch.Tensor):
+            cpu_dict[key] = value.cpu()
+        elif isinstance(value, dict):
+            cpu_dict[key] = dict_to_cpu(value)
+        else:
+            cpu_dict[key] = value
+    return cpu_dict
 
 class Preprocess(nn.Module):
     def __init__(self):
@@ -110,6 +120,9 @@ class StateActionTransition(nn.Module):
         self.result = nn.Linear(hidden_dims[-1], Dims.RESULT_STATE)
         self.average_reward = nn.Linear(hidden_dims[-1], 1)
         self.reward = nn.Linear(hidden_dims[-1], Dims.RESULT_STATE)
+
+    def get_weights(self):
+        return dict_to_cpu(self.state_dict())
 
     def forward(self, state, action):
         assert state.dim() == 4
