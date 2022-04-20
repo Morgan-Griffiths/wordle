@@ -23,7 +23,9 @@ from globals import (
 )
 import os
 import ray
-
+from ray_files.trainer import Trainer
+from ray_files.replay_buffer import ReplayBuffer
+from ray_files.utils import CPUActor
 
 def create_root(state, reward):
     root = Node(None, 1)
@@ -45,10 +47,8 @@ def learning_update(
     results,
     rewards,
 ) -> tuple((float, float)):
+    optimizer = params["optimizer"]
     # dynamics update
-    dynamics_optimizer = params["dynamics_optimizer"]
-    policy_optimizer = params["policy_optimizer"]
-    dynamics_optimizer.zero_grad()
     dynamics_outputs: DynamicOutputs = mu_zero.dynamics(
         states,
         actions,
@@ -56,20 +56,19 @@ def learning_update(
     dynamic_loss = F.cross_entropy(
         dynamics_outputs.state_probs, results, reduction="sum"
     )
-    dynamic_loss.backward()
-    dynamics_optimizer.step()
 
     # policy update
     policy_outputs: PolicyOutputs = mu_zero.policy(states)
-    policy_optimizer.zero_grad()
     policy_loss = F.cross_entropy(policy_outputs.probs, actions, reduction="sum")
     value_loss = F.smooth_l1_loss(
         rewards.unsqueeze(1), policy_outputs.value, reduction="sum"
     )
-    policy_loss = policy_loss + value_loss  #
-    policy_loss.backward()
+    policy_loss = policy_loss + value_loss
+    loss = policy_loss + dynamic_loss
+    optimizer.zero_grad()
+    loss.backward()
     torch.nn.utils.clip_grad_norm_(mu_zero._policy.parameters(), config.gradient_clip)
-    policy_optimizer.step()
+    optimizer.step()
     return (policy_loss.item(), dynamic_loss.item())
 
 
@@ -256,16 +255,36 @@ if __name__ == "__main__":
         "learning_rate": 1e-3,
     }
     params = {
-        "dynamics_optimizer": optim.Adam(
+        "optimizer": optim.Adam(
             mu_agent._dynamics.parameters(),
-            lr=training_params["learning_rate"],
-        ),
-        "policy_optimizer": optim.Adam(
-            mu_agent._policy.parameters(),
-            lr=training_params["learning_rate"],
-            weight_decay=config.L2,
+            lr=training_params["learning_rate"],weight_decay=config.L2
         ),
     }
+    checkpoint = {
+            "weights": None,
+            "optimizer_state": None,
+            "total_reward": 0,
+            "muzero_reward": 0,
+            "opponent_reward": 0,
+            "episode_length": 0,
+            "mean_value": 0,
+            "training_step": 0,
+            "lr": 0,
+            "total_loss": 0,
+            "value_loss": 0,
+            "reward_loss": 0,
+            "policy_loss": 0,
+            "num_played_games": 0,
+            "num_played_steps": 0,
+            "num_reanalysed_games": 0,
+            "terminate": False,
+        }
+    cpu_actor = CPUActor.remote()
+    cpu_weights = cpu_actor.get_initial_weights.remote(config)
+    checkpoint['weights'], summary = copy.deepcopy(ray.get(cpu_weights))
+    training_worker = Trainer.remote(checkpoint,config)
+    replay_buffer = {}
+    replay_worker = ReplayBuffer.remote(checkpoint,replay_buffer,config)
     # lr_stepsize = training_params["epochs"] // 5
     # lr_stepper = StepLR()
     # lr_stepper = MultiStepLR(
@@ -273,9 +292,9 @@ if __name__ == "__main__":
     #     milestones=[lr_stepsize * 2, lr_stepsize * 3, lr_stepsize * 4],
     #     gamma=0.1,
     # )
-    if training_params["resume"]:
-        print(f'loading network from {training_params["load_path"]}')
-        mu_agent.load_state_dict(torch.load(training_params["load_path"]))
+    # if training_params["resume"]:
+    #     print(f'loading network from {training_params["load_path"]}')
+    #     mu_agent.load_state_dict(torch.load(training_params["load_path"]))
     # test_mcts_training(env, mcts, mu_agent, config, params, training_params)
     ray.shutdown()
 
