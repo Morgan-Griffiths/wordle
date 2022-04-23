@@ -74,6 +74,9 @@ class MuAgent:
         )
 
     def state_transition(self, state, action):
+        assert (
+            action.dim() == 2
+        ), f"state_transition expect dims of 2 got {action.shape}"
         result, result_logits, reward, reward_logits = self.network.dynamics(
             state, action
         )
