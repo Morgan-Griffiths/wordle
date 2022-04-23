@@ -3,7 +3,6 @@ import copy
 import sys
 import torch
 import torch.nn as nn
-import torch.multiprocessing as mp
 import torch.nn.functional as F
 from torch.optim.lr_scheduler import MultiStepLR, StepLR
 from torch import optim
@@ -26,6 +25,7 @@ import ray
 from ray_files.trainer import Trainer
 from ray_files.replay_buffer import ReplayBuffer
 from ray_files.utils import CPUActor
+
 
 def create_root(state, reward):
     root = Node(None, 1)
@@ -114,7 +114,7 @@ def test_mcts_training(env, mcts: MCTS, mu_agent, config, params, training_param
                 # print("turn", env.turn)
                 # print(env.word)
                 while not done:
-                    root = create_root(torch.as_tensor(state).long(), reward)
+                    root = create_root(state, reward)
                     mcts.run(root, mu_agent)
                     # get chosen action
                     action, _ = root.select_child(config)
@@ -237,10 +237,6 @@ if __name__ == "__main__":
         help="number of trajectory samples to get",
     )
     args = parser.parse_args()
-    print("Number of processors: ", mp.cpu_count())
-    print(f"Number of GPUs: {torch.cuda.device_count()}")
-
-    ray.init()
 
     config = Config()
     env = Wordle(word_restriction=5)
@@ -257,34 +253,35 @@ if __name__ == "__main__":
     params = {
         "optimizer": optim.Adam(
             mu_agent._dynamics.parameters(),
-            lr=training_params["learning_rate"],weight_decay=config.L2
+            lr=training_params["learning_rate"],
+            weight_decay=config.L2,
         ),
     }
     checkpoint = {
-            "weights": None,
-            "optimizer_state": None,
-            "total_reward": 0,
-            "muzero_reward": 0,
-            "opponent_reward": 0,
-            "episode_length": 0,
-            "mean_value": 0,
-            "training_step": 0,
-            "lr": 0,
-            "total_loss": 0,
-            "value_loss": 0,
-            "reward_loss": 0,
-            "policy_loss": 0,
-            "num_played_games": 0,
-            "num_played_steps": 0,
-            "num_reanalysed_games": 0,
-            "terminate": False,
-        }
+        "weights": None,
+        "optimizer_state": None,
+        "total_reward": 0,
+        "muzero_reward": 0,
+        "opponent_reward": 0,
+        "episode_length": 0,
+        "mean_value": 0,
+        "training_step": 0,
+        "lr": 0,
+        "total_loss": 0,
+        "value_loss": 0,
+        "reward_loss": 0,
+        "policy_loss": 0,
+        "num_played_games": 0,
+        "num_played_steps": 0,
+        "num_reanalysed_games": 0,
+        "terminate": False,
+    }
     cpu_actor = CPUActor.remote()
     cpu_weights = cpu_actor.get_initial_weights.remote(config)
-    checkpoint['weights'], summary = copy.deepcopy(ray.get(cpu_weights))
-    training_worker = Trainer.remote(checkpoint,config)
+    checkpoint["weights"], summary = copy.deepcopy(ray.get(cpu_weights))
+    training_worker = Trainer.remote(checkpoint, config)
     replay_buffer = {}
-    replay_worker = ReplayBuffer.remote(checkpoint,replay_buffer,config)
+    replay_worker = ReplayBuffer.remote(checkpoint, replay_buffer, config)
     # lr_stepsize = training_params["epochs"] // 5
     # lr_stepper = StepLR()
     # lr_stepper = MultiStepLR(
