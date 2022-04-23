@@ -1,7 +1,8 @@
 import copy
-
+import os
 import ray
 import torch
+from pathlib import Path
 
 
 @ray.remote
@@ -16,7 +17,8 @@ class SharedStorage:
 
     def save_checkpoint(self, path=None):
         if not path:
-            path = self.config.results_path / "model.checkpoint"
+            path = os.path.join(self.config.results_path, "model.checkpoint")
+            Path(self.config.results_path).mkdir(parents=True, exist_ok=True)
 
         torch.save(self.current_checkpoint, path)
 

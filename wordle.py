@@ -11,6 +11,7 @@ from globals import (
     State,
     dictionary,
     dictionary_word_to_index,
+    dictionary_index_to_word,
     index_to_letter_dict,
     readable_result_dict,
 )
@@ -128,6 +129,17 @@ class Wordle:
         env.turn = deepcopy(self.turn)
         env.words = deepcopy(self.words)
         return env
+
+    @staticmethod
+    def action_to_string(action: int):
+        return dictionary_index_to_word[action]
+
+    @staticmethod
+    def word_to_action(word: str):
+        try:
+            return dictionary_word_to_index[word.upper()]
+        except:
+            raise ValueError(f"Invalid word {word}")
 
     # def update_state(self, slot, state, letter, turn):
     #     # 5, 6, 26

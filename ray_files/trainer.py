@@ -1,11 +1,12 @@
+import time
 import ray
 import torch
-import numpy
+import numpy as np
 import copy
-from ML.networks import ZeroPolicy, StateActionTransition
+from ML.networks import MuZeroNet, dict_to_cpu
 import torch.nn.functional as F
 
-from globals import DynamicOutputs
+from globals import DynamicOutputs, PolicyOutputs
 
 
 @ray.remote
@@ -19,11 +20,11 @@ class Trainer:
         self.config = config
 
         # Fix random generator seed
-        numpy.random.seed(self.config.seed)
+        np.random.seed(self.config.seed)
         torch.manual_seed(self.config.seed)
 
         # Initialize the network
-        self.model = StateActionTransition()
+        self.model = MuZeroNet(config)
         self.model.set_weights(copy.deepcopy(initial_checkpoint["weights"]))
         self.model.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
         self.model.train()
@@ -39,27 +40,120 @@ class Trainer:
                 copy.deepcopy(initial_checkpoint["optimizer_state"])
             )
 
-def update_lr(self):
-    lr =  self.config.lr_init * self.lr_decay_rate ** (self.training_step / self.config.lr_decay_rate)
-    for param_group in self.optimizer.param_groups:
-        param_group['lr'] = lr
+    def update_lr(self):
+        lr = self.config.lr_init * self.config.lr_decay_rate ** (
+            self.training_step / self.config.lr_decay_rate
+        )
+        for param_group in self.optimizer.param_groups:
+            param_group["lr"] = lr
 
+    def continuous_update_weights(self, replay_buffer, shared_storage):
+        # Wait for the replay buffer to be filled
+        while ray.get(shared_storage.get_info.remote("num_played_games")) < 1:
+            time.sleep(0.1)
 
-def update_weights(self, batch):
-    """
-    Perform one training step.
-    """
-    (states, actions, results) = batch
-    dynamics_outputs: DynamicOutputs = self.model.dynamics(
-        states,
-        actions,
-    )
-    dynamic_loss = (
-        F.cross_entropy(dynamics_outputs.state_probs, results, reduction="sum")
-        * self.config.value_loss_weight
-    )
-    self.optimizer.zero_grad()
-    dynamic_loss.backward()
-    self.optimizer.step()
-    self.training_step += 1
-    return dynamic_loss.item()
+        next_batch = replay_buffer.get_batch.remote()
+        # Training loop
+        while self.training_step < self.config.training_steps and not ray.get(
+            shared_storage.get_info.remote("terminate")
+        ):
+            index_batch, batch = ray.get(next_batch)
+            next_batch = replay_buffer.get_batch.remote()
+            self.update_lr()
+            (
+                priorities,
+                actor_loss,
+                dynamic_loss,
+            ) = self.update_weights(batch)
+
+            if self.config.PER:
+                # Save new priorities in the replay buffer (See https://arxiv.org/abs/1803.00933)
+                replay_buffer.update_priorities.remote(priorities, index_batch)
+
+            # Save to the shared storage
+            if self.training_step % self.config.checkpoint_interval == 0:
+                shared_storage.set_info.remote(
+                    {
+                        "weights": copy.deepcopy(self.model.get_weights()),
+                        "optimizer_state": copy.deepcopy(
+                            dict_to_cpu(self.optimizer.state_dict())
+                        ),
+                    }
+                )
+                if self.config.save_model:
+                    shared_storage.save_checkpoint.remote()
+            shared_storage.set_info.remote(
+                {
+                    "training_step": self.training_step,
+                    "lr": self.optimizer.param_groups[0]["lr"],
+                    "actor_loss": actor_loss,
+                    "dynamic_loss": dynamic_loss,
+                    "total_loss": actor_loss + dynamic_loss,
+                }
+            )
+
+            # Managing the self-play / training ratio
+            if self.config.training_delay:
+                time.sleep(self.config.training_delay)
+
+    def update_weights(self, batch):
+        """
+        Perform one training step.
+        """
+        # WEIGHT Update
+        (
+            state_batch,
+            action_batch,
+            value_batch,
+            reward_batch,
+            policy_batch,
+            weight_batch,
+            result_batch,
+            gradient_scale_batch,
+        ) = batch
+        assert state_batch.shape == (self.config.batch_size, 6, 5, 2)
+        assert value_batch.shape == (self.config.batch_size, 1)
+        assert reward_batch.shape == (self.config.batch_size, 1)
+        assert policy_batch.shape == (self.config.batch_size, 5)
+        assert result_batch.dim() == 1
+        assert action_batch.dim() == 1
+        device = next(self.model.parameters()).device
+        if self.config.PER:
+            weight_batch = torch.tensor(weight_batch.copy()).float().to(device)
+        dynamics_outputs: DynamicOutputs = self.model.dynamics(
+            state_batch,
+            action_batch.unsqueeze(1),
+        )
+        dynamic_loss = F.cross_entropy(
+            dynamics_outputs.state_probs, result_batch, reduction="none"
+        )
+        # policy update
+        policy_outputs: PolicyOutputs = self.model.policy(state_batch)
+        policy_loss = F.cross_entropy(
+            policy_outputs.probs, action_batch, reduction="none"
+        )
+        value_loss = F.smooth_l1_loss(
+            reward_batch, policy_outputs.value, reduction="none"
+        )
+        actor_loss = policy_loss + value_loss
+        loss = actor_loss + dynamic_loss
+        self.optimizer.zero_grad()
+
+        if self.config.PER:
+            # Correct PER bias by using importance-sampling (IS) weights
+            loss *= weight_batch
+        loss = loss.mean()
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(
+            self.model._policy.parameters(), self.config.gradient_clip
+        )
+        self.optimizer.step()
+        self.training_step += 1
+        # Priority update
+        target_value_scalar = np.array(reward_batch, dtype="float32")
+        priorities = np.zeros_like(target_value_scalar)
+        priorities = (
+            np.abs(policy_outputs.value.detach().numpy() - target_value_scalar)
+            ** self.config.PER_alpha
+        )
+        return priorities, actor_loss.mean().item(), dynamic_loss.mean().item()

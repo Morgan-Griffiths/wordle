@@ -16,7 +16,6 @@ from ML.networks import MuZeroNet
 from wordle import Wordle
 import math
 import torch
-from ray_files.mcts_containers import GameHistory
 
 """ 
 MuZero MCTS:
@@ -126,17 +125,27 @@ class Node:
         node.visit_count += 1
 
 
+def create_root(state, reward):
+    root = Node(None, 1)
+    root.state = torch.as_tensor(state).long().unsqueeze(0)
+    root.reward = reward
+    return root
+
+
 class MCTS:
     def __init__(self, config) -> None:
-        self.epsilon = 0.5
         self.config = config
+        self.epsilon = config.epsilon
 
     def decay_epsilon(self):
         self.epsilon = max(0, self.epsilon * 0.999)
 
-    def run(self, root: Node, agent: MuZeroNet):
-        with torch.no_grad():
-            for _ in range(self.config.num_simulations):
+    def run(self, agent: MuZeroNet, state, reward):
+        root = create_root(state, reward)
+        max_tree_depth = 0
+        for _ in range(self.config.num_simulations):
+            with torch.no_grad():
+                current_tree_depth = 0
                 node: Node = root
                 while node.reward not in [1, -1]:
                     if node.action_probs is None:
@@ -154,7 +163,7 @@ class MCTS:
                     else:
                         # network picks
                         action = np.random.choice(
-                            len(node.state_probs), p=node.action_probs
+                            len(node.action_probs), p=node.action_probs.numpy()
                         )
                     # if action previous unexplored, expand node
                     if action not in node.children:
@@ -162,11 +171,12 @@ class MCTS:
                             parent=node, prior=node.action_probs[action]
                         )
                         outputs: DynamicOutputs = agent.dynamics(
-                            node.state, torch.as_tensor(action).unsqueeze(0)
+                            node.state,
+                            torch.as_tensor(action).view(1, 1),
                         )
-                        node.children[
-                            action
-                        ].state_probs = outputs.state_probs.numpy()[0]
+                        node.children[action].state_probs = outputs.state_probs.numpy()[
+                            0
+                        ]
                         node.children[action].reward_outcomes = outputs.rewards[0]
                     node: Node = node.children[action]
                     # sample state after
@@ -190,5 +200,74 @@ class MCTS:
                     node = node.children[state_choice]
                     node.reward = int(reward.item())
                     node.state = torch.as_tensor(next_state).long()
+                    current_tree_depth += 1
+                max_tree_depth = max(max_tree_depth, current_tree_depth)
                 outputs: PolicyOutputs = agent.policy(node.state)
                 node.backprop(outputs.value.item(), self.config)
+        extra_info = {
+            "max_tree_depth": max_tree_depth,
+            "root_predicted_value": root.value,
+        }
+        return root, extra_info
+
+
+class GameHistory:
+    """
+    Store only usefull information of a self-play game.
+    """
+
+    def __init__(self):
+        self.result_history = []
+        self.word_history = []
+        self.state_history = []
+        self.action_history = []
+        self.reward_history = []
+        self.child_visits = []
+        self.root_values = []
+        self.reanalysed_predicted_root_values = None
+        # For PER
+        self.priorities = None
+        self.game_priority = None
+
+    def store_search_statistics(self, root: Node, action_space: int):
+        # Turn visit count from root into a policy
+        if root is not None:
+            sum_visits = sum(child.visit_count for child in root.children.values())
+            self.child_visits.append(
+                [
+                    root.children[a].visit_count / sum_visits
+                    if a in root.children
+                    else 0
+                    for a in range(action_space)
+                ]
+            )
+
+            self.root_values.append(root.value)
+        else:
+            self.root_values.append(None)
+
+    def prepare_inputs(
+        self,
+        states,
+        actions,
+        results,
+        reward_targets,
+    ):
+        states = np.array(states)
+        actions = np.array(actions)
+        reward_targets = np.array(reward_targets)
+        result_targets = [
+            torch.as_tensor(result_index_dict[tuple(res)]) for res in results
+        ]
+
+        assert (
+            len(states) == len(actions) == len(result_targets) == len(reward_targets)
+        ), f"Improper lengths {print(len(states), len(actions), len(result_targets), len(reward_targets))}"
+        # np.save("states.npy", states)
+        # np.save("actions.npy", actions)
+        # np.save("reward_targets.npy", reward_targets)
+        states = torch.as_tensor(states).long()
+        actions = torch.as_tensor(actions).long()
+        result_targets = torch.stack(result_targets).long()
+        reward_targets = torch.as_tensor(reward_targets).float()
+        return states, actions, result_targets, reward_targets

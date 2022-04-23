@@ -1,22 +1,26 @@
+import time
 from typing import Any
 import numpy as np
 import copy
+from MCTS_mu import MCTS, GameHistory
 from ML.agents.mu_agent import MuAgent
 from globals import (
     Dims,
     DynamicOutputs,
+    Embeddings,
     NetworkOutput,
     PolicyOutputs,
+    dictionary_index_to_word,
+    dictionary_word_to_index,
     result_index_dict,
     index_result_dict,
-    dictionary_index_to_word,
 )
 from utils import to_tensor, state_transition
 from ML.networks import MuZeroNet
 from wordle import Wordle
 import math
 import torch
-from ray_files.mcts_containers import GameHistory
+import ray
 
 """ 
 MuZero MCTS:
@@ -126,14 +130,16 @@ class Node:
         node.visit_count += 1
 
 
+@ray.remote
 class SelfPlay:
-    def __init__(self, config) -> None:
+    def __init__(self, initial_checkpoint, env, config, seed) -> None:
         self.epsilon = 0.5
         self.config = config
+        self.env = env
 
         # Fix random generator seed
-        np.random.seed(self.config.seed)
-        torch.manual_seed(self.config.seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
 
         # Initialize the network
         self.model = MuZeroNet(config)
@@ -144,67 +150,117 @@ class SelfPlay:
     def decay_epsilon(self):
         self.epsilon = max(0, self.epsilon * 0.999)
 
-    def run(self, root: Node, agent: MuZeroNet):
+    @staticmethod
+    def select_action(node, temperature):
+        """
+        Select action according to the visit count distribution and the temperature.
+        The temperature is changed dynamically with the visit_softmax_temperature function
+        in the config.
+        """
+        visit_counts = np.array(
+            [child.visit_count for child in node.children.values()], dtype="int32"
+        )
+        actions = [action for action in node.children.keys()]
+        if temperature == 0:
+            action = actions[np.argmax(visit_counts)]
+        elif temperature == float("inf"):
+            action = np.random.choice(actions)
+        else:
+            # See paper appendix Data Generation
+            visit_count_distribution = visit_counts ** (1 / temperature)
+            visit_count_distribution = visit_count_distribution / sum(
+                visit_count_distribution
+            )
+            action = np.random.choice(actions, p=visit_count_distribution)
+
+        return action
+
+    def continuous_self_play(self, shared_storage, replay_buffer, test_mode=False):
+        while ray.get(
+            shared_storage.get_info.remote("training_step")
+        ) < self.config.training_steps and not ray.get(
+            shared_storage.get_info.remote("terminate")
+        ):
+            self.model.set_weights(ray.get(shared_storage.get_info.remote("weights")))
+
+            if not test_mode:
+                game_history = self.play_game(
+                    self.config.visit_softmax_temperature_fn(
+                        trained_steps=ray.get(
+                            shared_storage.get_info.remote("training_step")
+                        )
+                    ),
+                    self.config.temperature_threshold,
+                    False,
+                )
+
+                replay_buffer.save_game.remote(game_history, shared_storage)
+
+            else:
+                # Take the best action (no exploration) in test mode
+                game_history = self.play_game(
+                    0,
+                    self.config.temperature_threshold,
+                    False,
+                )
+
+                # Save to the shared storage
+                shared_storage.set_info.remote(
+                    {
+                        "episode_length": len(game_history.action_history) - 1,
+                        "total_reward": sum(game_history.reward_history),
+                        "mean_value": np.mean(
+                            [value for value in game_history.root_values if value]
+                        ),
+                    }
+                )
+
+            # Managing the self-play / training ratio
+            if not test_mode and self.config.self_play_delay:
+                time.sleep(self.config.self_play_delay)
+
+        # self.close_game()
+
+    def play_game(self, temperature, temperature_threshold, render):
         game_history = GameHistory()
-        observation = self.game.reset()
-        game_history.action_history.append(0)
-        game_history.observation_history.append(observation)
-        game_history.reward_history.append(0)
-        game_history.to_play_history.append(self.game.to_play())
+        state, reward, done = self.env.reset()
+        game_history.state_history.append(state)
+        game_history.reward_history.append(reward)
+        game_history.word_history.append(self.env.word_to_action(self.env.word))
         with torch.no_grad():
-            for _ in range(self.config.num_simulations):
-                node: Node = root
-                while node.reward not in [1, -1]:
-                    if node.action_probs is None:
-                        outputs: PolicyOutputs = agent.policy(node.state)
-                        node.action_probs = outputs.probs[0]
-                    # pick action
-                    # print(len(node.children), node.expanded())
-                    # if len(node.children) == self.config.ubc_start:
-                    #     # ucb pick
-                    #     action, node = node.select_child(self.config)
-                    # else:
-                    if np.random.random() < self.epsilon:
-                        # random action
-                        action = np.random.randint(5)
-                    else:
-                        # network picks
-                        action = np.random.choice(
-                            len(node.state_probs), p=node.action_probs
-                        )
-                    # if action previous unexplored, expand node
-                    if action not in node.children:
-                        node.children[action] = Node(
-                            parent=node, prior=node.action_probs[action]
-                        )
-                        outputs: DynamicOutputs = agent.dynamics(
-                            node.state, torch.as_tensor(action).unsqueeze(0)
-                        )
-                        node.children[
-                            action
-                        ].state_probs = outputs.state_probs.numpy()[0]
-                        node.children[action].reward_outcomes = outputs.rewards[0]
-                    node: Node = node.children[action]
-                    # sample state after
-                    state_choice = np.random.choice(
-                        len(node.state_probs), p=node.state_probs
-                    )
-                    result, reward = (
-                        index_result_dict[state_choice],
-                        node.reward_outcomes[state_choice],
-                    )
-                    # get previous state -> new state
-                    next_state = state_transition(
-                        node.parent.state.numpy(),
-                        dictionary_index_to_word[action],
-                        np.array(result),
-                    )
-                    # print("next_state", next_state)
-                    node.children[state_choice] = Node(
-                        parent=node, prior=node.state_probs[state_choice]
-                    )
-                    node = node.children[state_choice]
-                    node.reward = int(reward.item())
-                    node.state = torch.as_tensor(next_state).long()
-                outputs: PolicyOutputs = agent.policy(node.state)
-                node.backprop(outputs.value.item(), self.config)
+            while not done:
+                root, mcts_info = MCTS(self.config).run(
+                    self.model,
+                    state,
+                    reward,
+                )
+                # get chosen action
+                action = self.select_action(
+                    root,
+                    temperature
+                    if not temperature_threshold
+                    or len(game_history.action_history) < temperature_threshold
+                    else 0,
+                )
+                if render:
+                    print(f'Tree depth: {mcts_info["max_tree_depth"]}')
+                    print(f"Root value {root.value:.2f}")
+                state, reward, done = self.env.step(dictionary_index_to_word[action])
+                if render:
+                    print(f"Played action: {self.env.action_to_string(action)}")
+                    self.env.visualize_state()
+
+                game_history.store_search_statistics(root, self.config.action_space)
+
+                # Next batch
+                game_history.result_history.append(
+                    state[self.env.turn - 1, :, Embeddings.RESULT]
+                )
+                game_history.word_history.append(
+                    dictionary_word_to_index[self.env.word]
+                )
+                game_history.action_history.append(action)
+                game_history.state_history.append(state)
+                game_history.reward_history.append(reward)
+
+        return game_history

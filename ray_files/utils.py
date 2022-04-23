@@ -1,5 +1,6 @@
-from ML.networks import StateActionTransition
+from ML.networks import MuZeroNet
 import ray
+
 
 @ray.remote(num_cpus=0, num_gpus=0)
 class CPUActor:
@@ -8,7 +9,7 @@ class CPUActor:
         pass
 
     def get_initial_weights(self, config):
-        model = StateActionTransition()
+        model = MuZeroNet(config)
         weights = model.get_weights()
         summary = str(model).replace("\n", " \n\n")
         return weights, summary

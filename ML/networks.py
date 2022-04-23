@@ -15,6 +15,7 @@ from globals import (
 )
 from torch.distributions import Categorical
 from ML.transformer import CTransformer
+from abc import ABC, abstractmethod
 
 from utils import to_tensor, return_rewards
 
@@ -33,9 +34,30 @@ ROW_EMB = nn.Embedding(6, Dims.EMBEDDING_SIZE)
 COL_EMB = nn.Embedding(5, Dims.EMBEDDING_SIZE)
 TURN_EMB = nn.Embedding(6, Dims.EMBEDDING_SIZE)
 
+
+class AbstractNetwork(ABC, nn.Module):
+    def __init__(self):
+        super().__init__()
+        pass
+
+    @abstractmethod
+    def policy(self, state):
+        pass
+
+    @abstractmethod
+    def dynamics(self, encoded_state, action):
+        pass
+
+    def get_weights(self):
+        return dict_to_cpu(self.state_dict())
+
+    def set_weights(self, weights):
+        self.load_state_dict(weights)
+
+
 def dict_to_cpu(dictionary):
     cpu_dict = {}
-    for key,value in dictionary.items():
+    for key, value in dictionary.items():
         if isinstance(value, torch.Tensor):
             cpu_dict[key] = value.cpu()
         elif isinstance(value, dict):
@@ -43,6 +65,22 @@ def dict_to_cpu(dictionary):
         else:
             cpu_dict[key] = value
     return cpu_dict
+
+
+def mlp(
+    input_size,
+    layer_sizes,
+    output_size,
+    output_activation=torch.nn.Identity,
+    activation=torch.nn.ELU,
+):
+    sizes = [input_size] + layer_sizes + [output_size]
+    layers = []
+    for i in range(len(sizes) - 1):
+        act = activation if i < len(sizes) - 2 else output_activation
+        layers += [torch.nn.Linear(sizes[i], sizes[i + 1]), act()]
+    return torch.nn.Sequential(*layers)
+
 
 class Preprocess(nn.Module):
     def __init__(self):
@@ -125,7 +163,8 @@ class StateActionTransition(nn.Module):
         return dict_to_cpu(self.state_dict())
 
     def forward(self, state, action):
-        assert state.dim() == 4
+        assert state.dim() == 4, f"expect dim of 4 got {state.shape}"
+        assert action.dim() == 2, f"expect dim of 2 got {action.shape}"
         B = state.shape[0]
         x = self.process_layer(state).view(B, 6, -1)
         turns = torch.count_nonzero(state, dim=1)[:, 0, 0].view(-1, 1)
@@ -133,6 +172,8 @@ class StateActionTransition(nn.Module):
         rewards = reward_over_states(bools)
         a = self.action_emb(action)
         x = self.transformer(x)
+        if a.dim() == 3:  # for batch training
+            a = a.squeeze(1)
         s = torch.cat((x.view(B, -1), a), dim=-1)
         s = F.leaky_relu(self.output_layer(s))
         state_logits = self.result(s)
@@ -147,7 +188,7 @@ class StateActionTransition(nn.Module):
 
 
 class ZeroPolicy(nn.Module):
-    def __init__(self, params):
+    def __init__(self, config):
         super(ZeroPolicy, self).__init__()
         self.seed = torch.manual_seed(1234)
         self.process_input = Preprocess()
@@ -163,11 +204,11 @@ class ZeroPolicy(nn.Module):
         )
         # the part for actions
         self.fc_action1 = nn.Linear(Dims.TRANSFORMER_OUTPUT, 256)
-        self.fc_action2 = nn.Linear(256, params["nA"])
+        self.fc_action2 = nn.Linear(256, config.action_space)
 
         # the part for the value function
         self.value_output = nn.Linear(Dims.TRANSFORMER_OUTPUT, 1)
-        self.advantage_output = nn.Linear(256, params["nA"])
+        self.advantage_output = nn.Linear(256, config.action_space)
 
     def forward(self, state: torch.LongTensor):
         # B,26
@@ -188,10 +229,10 @@ class ZeroPolicy(nn.Module):
         return PolicyOutputs(action, m.probs, v)
 
 
-class MuZeroNet(nn.Module):
-    def __init__(self, output_dims):
+class MuZeroNet(AbstractNetwork):
+    def __init__(self, config):
         super(MuZeroNet, self).__init__()
-        self._policy = ZeroPolicy(output_dims)
+        self._policy = ZeroPolicy(config)
         self._representation = StateEncoder()
         self._dynamics = StateActionTransition()
 
