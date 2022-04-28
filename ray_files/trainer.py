@@ -6,7 +6,7 @@ import copy
 from ML.networks import MuZeroNet, dict_to_cpu
 import torch.nn.functional as F
 
-from globals import DynamicOutputs, PolicyOutputs
+from globals import DynamicOutputs, PolicyOutputs,State
 
 
 @ray.remote
@@ -64,7 +64,9 @@ class Trainer:
                 priorities,
                 actor_loss,
                 dynamic_loss,
-            ) = self.update_weights(batch)
+                policy_loss,
+                value_loss,
+            ) = self.update_weights(batch, shared_storage)
 
             if self.config.PER:
                 # Save new priorities in the replay buffer (See https://arxiv.org/abs/1803.00933)
@@ -89,6 +91,8 @@ class Trainer:
                     "actor_loss": actor_loss,
                     "dynamic_loss": dynamic_loss,
                     "total_loss": actor_loss + dynamic_loss,
+                    "policy_loss": policy_loss,
+                    "value_loss": value_loss,
                 }
             )
 
@@ -96,7 +100,7 @@ class Trainer:
             if self.config.training_delay:
                 time.sleep(self.config.training_delay)
 
-    def update_weights(self, batch):
+    def update_weights(self, batch, shared_storage):
         """
         Perform one training step.
         """
@@ -109,14 +113,16 @@ class Trainer:
             policy_batch,
             weight_batch,
             result_batch,
+            word_batch,
             gradient_scale_batch,
         ) = batch
-        assert state_batch.shape == (self.config.batch_size, 6, 5, 2)
+        assert state_batch.shape == (self.config.batch_size, State.SHAPE)
         assert value_batch.shape == (self.config.batch_size, 1)
         assert reward_batch.shape == (self.config.batch_size, 1)
-        assert policy_batch.shape == (self.config.batch_size, 5)
+        assert policy_batch.shape == (self.config.batch_size, self.config.action_space)
         assert result_batch.dim() == 1
         assert action_batch.dim() == 1
+
         device = next(self.model.parameters()).device
         if self.config.PER:
             weight_batch = torch.tensor(weight_batch.copy()).float().to(device)
@@ -124,25 +130,21 @@ class Trainer:
             state_batch,
             action_batch.unsqueeze(1),
         )
-        dynamic_loss = F.cross_entropy(
-            dynamics_outputs.state_probs, result_batch, reduction="none"
-        )
+        dynamic_loss = F.nll_loss(dynamics_outputs.state_logprobs, result_batch)
         # policy update
         policy_outputs: PolicyOutputs = self.model.policy(state_batch)
-        policy_loss = F.cross_entropy(
-            policy_outputs.probs, action_batch, reduction="none"
-        )
+        policy_loss = F.nll_loss(policy_outputs.logprobs, word_batch, reduction="none")
         value_loss = F.smooth_l1_loss(
             reward_batch, policy_outputs.value, reduction="none"
         )
         actor_loss = policy_loss + value_loss
-        loss = actor_loss + dynamic_loss
-        self.optimizer.zero_grad()
 
         if self.config.PER:
             # Correct PER bias by using importance-sampling (IS) weights
-            loss *= weight_batch
-        loss = loss.mean()
+            actor_loss *= weight_batch
+        loss = actor_loss.sum() + dynamic_loss
+        self.optimizer.zero_grad()
+        # loss = loss.mean()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(
             self.model._policy.parameters(), self.config.gradient_clip
@@ -156,4 +158,35 @@ class Trainer:
             np.abs(policy_outputs.value.detach().numpy() - target_value_scalar)
             ** self.config.PER_alpha
         )
-        return priorities, actor_loss.mean().item(), dynamic_loss.mean().item()
+        shared_storage.set_info.remote(
+            {
+                "actor_probs": policy_outputs.probs[0],
+                "actor_value": policy_outputs.value[0],
+                "dynamic_prob_winning_state": dynamics_outputs.state_probs[0],
+                "results": result_batch[0],
+            }
+        )
+        return (
+            priorities,
+            actor_loss.mean().item(),
+            dynamic_loss.mean().item(),
+            policy_loss.mean().item(),
+            value_loss.mean().item(),
+        )
+
+    def test(self, batch, shared_storage):
+        (
+            priorities,
+            actor_loss,
+            dynamic_loss,
+            policy_loss,
+            value_loss,
+        ) = self.update_weights(batch, shared_storage)
+        shared_storage.set_info.remote(
+            {
+                "weights": copy.deepcopy(self.model.get_weights()),
+                "optimizer_state": copy.deepcopy(
+                    dict_to_cpu(self.optimizer.state_dict())
+                ),
+            }
+        )
