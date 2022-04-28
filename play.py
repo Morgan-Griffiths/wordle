@@ -12,6 +12,7 @@ from ML.networks import MuZeroNet
 from MCTS_mu import MCTS, Node
 from config import Config
 from globals import (
+    CHECKPOINT,
     DynamicOutputs,
     Embeddings,
     PolicyOutputs,
@@ -194,7 +195,6 @@ def validation(network, states, target_actions, results, reward_targets):
             print("target_action", target_action)
             print("\nvalue", policy_outputs.value)
             print("reward_target", reward_target)
-            print("\nresult", dynamic_outputs.next_state)
             print("target_result", target_result)
 
 
@@ -245,7 +245,7 @@ if __name__ == "__main__":
     training_params = {
         "epochs": args.epochs,
         "trajectories": 25,
-        "load_path": "weights/muzero",
+        "load_path": "results/muzero",
         "resume": args.resume,
         "skip_training": args.skip_training,
         "learning_rate": 1e-3,
@@ -257,25 +257,7 @@ if __name__ == "__main__":
             weight_decay=config.L2,
         ),
     }
-    checkpoint = {
-        "weights": None,
-        "optimizer_state": None,
-        "total_reward": 0,
-        "muzero_reward": 0,
-        "opponent_reward": 0,
-        "episode_length": 0,
-        "mean_value": 0,
-        "training_step": 0,
-        "lr": 0,
-        "total_loss": 0,
-        "value_loss": 0,
-        "reward_loss": 0,
-        "policy_loss": 0,
-        "num_played_games": 0,
-        "num_played_steps": 0,
-        "num_reanalysed_games": 0,
-        "terminate": False,
-    }
+    checkpoint = copy.copy(CHECKPOINT)
     cpu_actor = CPUActor.remote()
     cpu_weights = cpu_actor.get_initial_weights.remote(config)
     checkpoint["weights"], summary = copy.deepcopy(ray.get(cpu_weights))

@@ -17,21 +17,35 @@ from globals import (
 from prettytable import PrettyTable
 from scipy.stats import entropy
 
-def state_transition(state:np.array,word:str,result:np.array) -> np.array:
+
+def debug(func):
+    def wrapper(*args, **kwags):
+        print(f"Running {func.__name__}")
+        return func(*args, **kwags)
+
+    return wrapper
+
+
+def state_transition(
+    state: np.array, word: str, result: np.array, action: np.array
+) -> np.array:
     new_state = copy.deepcopy(state)
     encoded_word = np.array([alphabet_dict[letter] for letter in word.upper()])
     mask = np.where(new_state == 0)[1]
     turn = min(mask)
-    new_state[:,turn,:,Embeddings.LETTER] = encoded_word
-    new_state[:,turn,:,Embeddings.RESULT] = result
+    new_state[:, turn, :, Embeddings.LETTER] = encoded_word
+    new_state[:, turn, :, Embeddings.RESULT] = result
+    new_state[:, turn, :, Embeddings.WORD] = action
     return new_state
+
 
 def load_n_letter_words(n):
     with open("/usr/share/dict/words", "r") as f:
         data = f.read()
-    words = data.split('\n')
+    words = data.split("\n")
     cleaned = [word.strip() for word in words if len(word) == n]
     return cleaned
+
 
 def return_rewards(turn: int, reward: float):
     sign = -1 if reward < 0 else 1
@@ -317,4 +331,3 @@ class Stats:
 
     def store_rewards(self, rewards):
         self.rewards.extend(rewards)
-
