@@ -128,7 +128,7 @@ class MuZero:
         Keep track of the training performance.
         """
         # Launch the test worker to get performance metrics
-        self.test_worker = SelfPlay.options(num_cpus=0, num_gpus=num_gpus,).remote(
+        self.test_worker = SelfPlay.options(num_cpus=0, num_gpus=num_gpus).remote(
             self.checkpoint,
             self.env,
             self.config,
