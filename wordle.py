@@ -5,13 +5,11 @@ from copy import deepcopy
 from globals import (
     Embeddings,
     Tokens,
-    alphabet,
     Axis,
+    alphabet,
     alphabet_dict,
     State,
     dictionary,
-    dictionary_word_to_index,
-    dictionary_index_to_word,
     index_to_letter_dict,
     readable_result_dict,
 )
@@ -23,11 +21,17 @@ class Wordle:
     def __init__(self, word_restriction=None) -> None:
         super().__init__()
         if word_restriction is not None:
-            self.dictionary = dictionary[:word_restriction]
+            step_size = len(dictionary) // word_restriction
+            self.dictionary = dictionary[::step_size][:word_restriction]
         else:
             self.dictionary = dictionary
         self.alphabet_dict = alphabet_dict
-        self.dictionary_word_to_index = dictionary_word_to_index
+        self.dictionary_word_to_index = {
+            word: i for i, word in enumerate(self.dictionary)
+        }
+        self.dictionary_index_to_word = {
+            i: word for i, word in enumerate(self.dictionary)
+        }
         self.gamma = 0.05
         self.reset()
 
@@ -44,7 +48,7 @@ class Wordle:
     def step(self, word):
         word = word.upper()
         if word not in self.dictionary_word_to_index:
-            raise ValueError("Not a real word. Nice try bozo")
+            raise ValueError(f"{word.title()} is not contained in the dictionary")
         self.words.append(self.dictionary_word_to_index[word])
         result = self.evaluate_word(word)
         self.update_alphabet(word, result)
@@ -93,16 +97,17 @@ class Wordle:
                 state=update,
                 letter=self.alphabet_dict[letter],
                 turn=self.turn,
+                word=word,
             )
             letter_result[i] = update
             letter_freqs[letter] = max(0, letter_freqs[letter] - 1)
         return letter_result
 
-    def update_state(self, slot, state, letter, turn):
+    def update_state(self, slot, state, letter, turn, word):
         # 5, 6, 3
         self.state[turn, slot, Embeddings.LETTER] = letter
         self.state[turn, slot, Embeddings.RESULT] = state
-        # self.state[turn, slot, Embeddings.WORD] = word_idx
+        self.state[turn, slot, Embeddings.WORD] = self.word_to_action(word)
 
     def visualize_state(self):
         letter_headers = [f"Letters_{i}" for i in range(5)]
@@ -117,7 +122,7 @@ class Wordle:
                 row_items.append(index_to_letter_dict[letter])
                 row_items.append(readable_result_dict[int(result)])
             table.add_row(row_items)
-        print(self.word)
+        print(f"Target word {self.word}")
         print(table)
 
     def copy(self):
@@ -130,14 +135,12 @@ class Wordle:
         env.words = deepcopy(self.words)
         return env
 
-    @staticmethod
-    def action_to_string(action: int):
-        return dictionary_index_to_word[action]
+    def action_to_string(self, action: int):
+        return self.dictionary_index_to_word[action]
 
-    @staticmethod
-    def word_to_action(word: str):
+    def word_to_action(self, word: str):
         try:
-            return dictionary_word_to_index[word.upper()]
+            return self.dictionary_word_to_index[word.upper()]
         except:
             raise ValueError(f"Invalid word {word}")
 
