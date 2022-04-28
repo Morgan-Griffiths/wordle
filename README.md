@@ -1,9 +1,5 @@
 # Wordle
 
-TODO
-find threshold network for muzero state transition
-assert muzero state transitions work
-
 deep learning environment for training bots on the game wordle.
 
 # test
@@ -14,16 +10,7 @@ deep learning environment for training bots on the game wordle.
 
 ```python main.py``` 
 
-# make a new experiment
-
-- add a new datatype in DataTypes in experiments.globals.py
-- add a new actionSpace in ActionSpace in globals.py
-- add a new network in ML.networks.py Or link to an old one.
-- link a network in NetworkConfig.DataModels experiments.globals.py 
-- add the loss function type in NetworkConfig.LearningCategories experiments.globals.py 
-- add the dataset builder in experiments.generate_data.py
-- add the selection in get_data in experiments.generate_data.py
-- run the experiment
+on menu prompt enter 0
 
 # run experiments
 
@@ -31,7 +18,11 @@ deep learning environment for training bots on the game wordle.
 
 # weights
 
-Network weights saved in results
+Saved network weights
+
+# results
+
+Tensorboard stats
 
 # plots
 
