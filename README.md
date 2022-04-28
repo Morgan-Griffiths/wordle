@@ -31,7 +31,7 @@ deep learning environment for training bots on the game wordle.
 
 # weights
 
-Network weights saved in weights
+Network weights saved in results
 
 # plots
 

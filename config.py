@@ -22,10 +22,10 @@ class Config:
     PER = True
     # MUZERO
     save_model = True
-    checkpoint_interval = 10
+    checkpoint_interval = 50
     discount_rate = 0.85
     epsilon = 0.5
-    action_space = 5
+    action_space = 10
     value_loss_weight = 0.25
     weight_decay = 0.1
     lr_init = 1e-3
@@ -34,24 +34,31 @@ class Config:
     pb_c_init = 1.25
     root_exploration_fraction = 0.25
     root_dirichlet_alpha = 0.25
-    num_simulations = 10
+    num_simulations = 25
     revisit_policy_search_rate = 0
     self_play_delay = 0  # Number of seconds to wait after each played game
     training_delay = 0  # Number of seconds to wait after each training step
     temperature_threshold = None  # Number of moves before dropping the temperature given by visit_softmax_temperature_fn to 0 (ie selecting the best action). If None, visit_softmax_temperature_fn is used every time
     num_workers = 1
-    training_steps = 250
+    training_steps = 1000
     td_steps = 6
     reanalyse_on_gpu = True
     selfplay_on_gpu = True
     train_on_gpu = torch.cuda.is_available()  # Train on GPU if available
     use_last_model_value = True
-    results_path = (
-        pathlib.Path(__file__).resolve().parents[1]
-        / "wordle"
+    buffer_path = (
+        pathlib.Path(__file__).resolve().parents[0] / "dataset"
+    )  # Path to TensorBoard logs
+    weights_path = (
+        pathlib.Path(__file__).resolve().parents[0]
         / "weights"
         / datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S")
-    )  # Path to store the model weights and TensorBoard logs
+    )  # Path to store the model weights
+    results_path = (
+        pathlib.Path(__file__).resolve().parents[0]
+        / "results"
+        / datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S")
+    )  # Path to TensorBoard logs
 
     def visit_softmax_temperature_fn(self, trained_steps):
         """
