@@ -133,7 +133,8 @@ class Trainer:
         dynamic_loss = F.nll_loss(dynamics_outputs.state_logprobs, result_batch)
         # policy update
         policy_outputs: PolicyOutputs = self.model.policy(state_batch)
-        policy_loss = F.nll_loss(policy_outputs.logprobs, word_batch, reduction="none")
+        # policy_loss = F.nll_loss(policy_outputs.logprobs, word_batch, reduction="none")
+        policy_loss = (-policy_batch * policy_outputs.logprobs).sum(1)
         value_loss = F.smooth_l1_loss(
             reward_batch, policy_outputs.value, reduction="none"
         )
