@@ -159,7 +159,7 @@ class MCTS:
                     # else:
                     if np.random.random() < self.epsilon:
                         # random action
-                        action = np.random.randint(5)
+                        action = np.random.randint(self.config.action_space)
                     else:
                         # network picks
                         action = np.random.choice(
@@ -224,6 +224,7 @@ class GameHistory:
         self.reward_history = []
         self.child_visits = []
         self.root_values = []
+        self.max_actions = []
         self.reanalysed_predicted_root_values = None
         # For PER
         self.priorities = None
@@ -232,7 +233,8 @@ class GameHistory:
     def store_search_statistics(self, root: Node, action_space: int):
         # Turn visit count from root into a policy
         if root is not None:
-            sum_visits = sum(child.visit_count for child in root.children.values())
+            visit_counts = [child.visit_count for child in root.children.values()]
+            sum_visits = sum(visit_counts)
             self.child_visits.append(
                 [
                     root.children[a].visit_count / sum_visits
@@ -243,6 +245,8 @@ class GameHistory:
             )
 
             self.root_values.append(root.value)
+            actions = [action for action in root.children.keys()]
+            self.max_actions.append(actions[np.argmax(visit_counts)])
         else:
             self.root_values.append(None)
 
