@@ -17,8 +17,8 @@ class SharedStorage:
 
     def save_checkpoint(self, path=None):
         if not path:
-            path = os.path.join(self.config.results_path, "model.checkpoint")
-            Path(self.config.results_path).mkdir(parents=True, exist_ok=True)
+            path = os.path.join(self.config.weights_path, "model.checkpoint")
+            Path(self.config.weights_path).mkdir(parents=True, exist_ok=True)
 
         torch.save(self.current_checkpoint, path)
 
