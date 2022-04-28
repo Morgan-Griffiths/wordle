@@ -10,10 +10,6 @@ from globals import (
     Embeddings,
     NetworkOutput,
     PolicyOutputs,
-    dictionary_index_to_word,
-    dictionary_word_to_index,
-    result_index_dict,
-    index_result_dict,
 )
 from utils import to_tensor, state_transition
 from ML.networks import MuZeroNet
@@ -203,11 +199,14 @@ class SelfPlay:
                     self.config.temperature_threshold,
                     False,
                 )
-
+                # print("state_history", game_history.state_history)
+                # print("result_history", game_history.result_history)
+                # print("reward_history", game_history.reward_history)
                 # Save to the shared storage
                 shared_storage.set_info.remote(
                     {
                         "episode_length": len(game_history.action_history) - 1,
+                        "actions": np.array(game_history.max_actions),
                         "total_reward": sum(game_history.reward_history),
                         "mean_value": np.mean(
                             [value for value in game_history.root_values if value]
@@ -224,8 +223,7 @@ class SelfPlay:
     def play_game(self, temperature, temperature_threshold, render):
         game_history = GameHistory()
         state, reward, done = self.env.reset()
-        game_history.state_history.append(state)
-        game_history.reward_history.append(reward)
+        game_history.state_history.append(state.copy())
         game_history.word_history.append(self.env.word_to_action(self.env.word))
         with torch.no_grad():
             while not done:
@@ -245,7 +243,7 @@ class SelfPlay:
                 if render:
                     print(f'Tree depth: {mcts_info["max_tree_depth"]}')
                     print(f"Root value {root.value:.2f}")
-                state, reward, done = self.env.step(dictionary_index_to_word[action])
+                state, reward, done = self.env.step(self.env.action_to_string(action))
                 if render:
                     print(f"Played action: {self.env.action_to_string(action)}")
                     self.env.visualize_state()
@@ -256,11 +254,12 @@ class SelfPlay:
                 game_history.result_history.append(
                     state[self.env.turn - 1, :, Embeddings.RESULT]
                 )
-                game_history.word_history.append(
-                    dictionary_word_to_index[self.env.word]
-                )
                 game_history.action_history.append(action)
-                game_history.state_history.append(state)
                 game_history.reward_history.append(reward)
+                if not done:
+                    game_history.state_history.append(state.copy())
+                    game_history.word_history.append(
+                        self.env.word_to_action(self.env.word)
+                    )
 
         return game_history
