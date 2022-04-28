@@ -5,7 +5,7 @@ import ray
 import torch
 from torch import optim
 import numpy as np
-from ML.networks import MuZeroNet, TestNet
+from ML.networks import MuZeroNet, TestNet, StateActionTransition
 from config import Config
 from globals import DynamicOutputs, PolicyOutputs, index_result_dict, CHECKPOINT
 from experiments.generate_data import load_data
@@ -26,7 +26,6 @@ def test_state_transition(net, training_params, agent_params, per_buffer):
     optimizer = optim.Adam(
         net.parameters(), lr=agent_params["learning_rate"], weight_decay=3e-2
     )
-    criterion = training_params["criterion"](reduction="sum")
     scores = []
     score_window = deque(maxlen=100)
     next_batch = per_buffer.get_batch.remote()
@@ -42,25 +41,17 @@ def test_state_transition(net, training_params, agent_params, per_buffer):
         word_batch,
         gradient_scale_batch,
     ) = batch
-
-    scaling = torch.zeros(243)
-    count = Counter([r.item() for r in result_batch])
-    for key, value in count.items():
-        scaling[key] = result_batch.shape[0] / value
-    # print("count", count)
-    # print("scaling", scaling)
-    # print("state_batch", state_batch)
-    # print("target results", result_batch)
+    # print(state_batch)
+    # print(action_batch)
     for epoch in range(training_params["epochs"]):
         sys.stdout.write("\r")
         outputs: DynamicOutputs = net.dynamics(
             state_batch,
-            action_batch.unsqueeze(-1),
+            action_batch.unsqueeze(1),
         )
-        loss = F.nll_loss(outputs.state_probs, result_batch)
+        loss = F.nll_loss(outputs.state_logprobs, result_batch)
         optimizer.zero_grad()
         loss.backward()
-        # print(net.get_gradients())
         optimizer.step()
         score_window.append(loss.item())
         scores.append(np.mean(score_window))
@@ -103,9 +94,9 @@ def validation(network, batch):
             print("action", action)
             print(
                 "actual state prob",
-                torch.exp(outputs.state_probs[0][target_result.item()]),
+                outputs.state_probs[0][target_result.item()],
             )
-            print("winning state prob", torch.exp(outputs.state_probs[0][-1]))
+            print("winning state prob", outputs.state_probs[0][-1])
             print("target_result", index_result_dict[target_result.item()])
 
 
@@ -147,7 +138,7 @@ if __name__ == "__main__":
     checkpoint["num_reanalysed_games"] = buffer_info["num_reanalysed_games"]
     per_buffer = ReplayBuffer.remote(checkpoint, buffer_info["buffer"], config)
     # mu_zero = MuZeroNet(config)
-    mu_zero = TestNet(config)
+    mu_zero = StateActionTransition(config)
 
     network_path = "weights/dynamics"
     # loss_type = dataMapping[args.datatype]
