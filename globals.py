@@ -61,7 +61,7 @@ class Embeddings:
 
 
 class State:
-    SHAPE = (6, 5, 2)
+    SHAPE = (6, 5, 3)
 
 
 class Dims:
@@ -94,21 +94,50 @@ class NetworkOutput(NamedTuple):
 
 @dataclass
 class DynamicOutputs:
-    next_state: torch.tensor
+    state_logprobs: torch.tensor
     state_probs: torch.tensor
-    reward: int
     rewards: np.array
 
 
 @dataclass
 class PolicyOutputs:
     action: int
+    logprobs: torch.tensor
     probs: torch.tensor
     value: float
 
 
+CHECKPOINT = {
+    "weights": None,
+    "optimizer_state": None,
+    "total_reward": 0,
+    "muzero_reward": 0,
+    "opponent_reward": 0,
+    "episode_length": 0,
+    "mean_value": 0,
+    "training_step": 0,
+    "lr": 0,
+    "total_loss": 0,
+    "actor_loss": 0,
+    "policy_loss": 0,
+    "value_loss": 0,
+    "dynamic_loss": 0,
+    "actor_probs": 0,
+    "actor_value": 0,
+    "dynamic_prob_winning_state": 0,
+    "actions": 0,
+    "results": 0,
+    "num_played_games": 0,
+    "num_played_steps": 0,
+    "num_reanalysed_games": 0,
+    "terminate": False,
+}
+
 with open("data/allowed_words.txt", "r") as f:
     wordle_dictionary = f.readlines()
+
+with open("data/possible_words.txt", "r") as f:
+    word_targets_dictionary = f.readlines()
 
 permutations = []
 for a in range(1, 4):
@@ -119,8 +148,8 @@ for a in range(1, 4):
                     permutations.append((a, b, c, d, e))
 result_index_dict = {dist: i for i, dist in enumerate(permutations)}
 index_result_dict = {i: dist for dist, i in result_index_dict.items()}
+target_dictionary = [word.strip() for word in word_targets_dictionary]
 dictionary = [word.strip() for word in wordle_dictionary]
-dictionary = dictionary[: Dims.OUTPUT]
 dictionary_arr = np.vstack([list(word) for word in dictionary])
 # dictionary = [
 #     "MOUNT",
