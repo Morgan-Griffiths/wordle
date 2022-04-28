@@ -1,25 +1,22 @@
 import copy
 import math
+import pathlib
+import pickle
 import time
-from ML.agents.mu_agent import MuAgent
 import torch.multiprocessing as mp
 from config import Config
 from ray_files.utils import CPUActor
+from ray_files.validate_model import ValidateModel
 from wordle import Wordle
-from globals import Models, Outputs, Results, Tokens, Dims, AgentData, Train, dictionary
+from globals import Models, CHECKPOINT
 import torch
-from plot import plot_data, plot_frequencies, plot_q_values
 import ray
-import sys
-import os
 import numpy as np
 from ray_files.trainer import Trainer
 from ray_files.shared_storage import SharedStorage
 from ray_files.replay_buffer import ReplayBuffer, Reanalyse
 from ray_files.self_play import SelfPlay
 from torch.utils.tensorboard import SummaryWriter
-from utils import shape_values_to_q_values, store_outputs, store_state, return_rewards
-from train import train, train_dynamics, train_mcts
 
 
 class MuZero:
@@ -35,24 +32,7 @@ class MuZero:
         ray.init(num_gpus=total_gpus, ignore_reinit_error=True)
 
         # Checkpoint and replay buffer used to initialize workers
-        self.checkpoint = {
-            "weights": None,
-            "optimizer_state": None,
-            "total_reward": 0,
-            "muzero_reward": 0,
-            "opponent_reward": 0,
-            "episode_length": 0,
-            "mean_value": 0,
-            "training_step": 0,
-            "lr": 0,
-            "total_loss": 0,
-            "actor_loss": 0,
-            "dynamic_loss": 0,
-            "num_played_games": 0,
-            "num_played_steps": 0,
-            "num_reanalysed_games": 0,
-            "terminate": False,
-        }
+        self.checkpoint = copy.copy(CHECKPOINT)
         self.replay_buffer = {}
         cpu_actor = CPUActor.remote()
         cpu_weights = cpu_actor.get_initial_weights.remote(self.config)
@@ -72,8 +52,9 @@ class MuZero:
         Args:
             log_in_tensorboard (bool): Start a testing worker and log its performance in TensorBoard.
         """
-        if log_in_tensorboard or self.config.save_model:
-            self.config.results_path.mkdir(parents=True, exist_ok=True)
+        # if log_in_tensorboard or self.config.save_model:
+        #     self.config.results_path.mkdir(parents=True, exist_ok=True)
+        #     self.config.weights_path.mkdir(parents=True, exist_ok=True)
 
         # Manage GPUs
         if 0 < self.num_gpus:
@@ -191,6 +172,13 @@ class MuZero:
             "total_loss",
             "actor_loss",
             "dynamic_loss",
+            "value_loss",
+            "policy_loss",
+            "actor_probs",
+            "actor_value",
+            "dynamic_prob_winning_state",
+            "results",
+            "actions",
             "num_played_games",
             "num_played_steps",
             "num_reanalysed_games",
@@ -225,6 +213,25 @@ class MuZero:
                     counter,
                 )
                 writer.add_scalar(
+                    "1.Total_reward/5.actor_value",
+                    info["actor_value"],
+                    counter,
+                )
+                writer.add_histogram("1.Actor/actions", info["actions"], counter)
+                writer.add_histogram(
+                    "1.Actor/actor_probs", info["actor_probs"], counter
+                )
+                writer.add_histogram(
+                    "2.Dynamics/dynamic_prob_winning_state",
+                    info["dynamic_prob_winning_state"],
+                    counter,
+                )
+                writer.add_histogram(
+                    "2.Dynamics/results",
+                    info["results"],
+                    counter,
+                )
+                writer.add_scalar(
                     "2.Workers/1.Self_played_games",
                     info["num_played_games"],
                     counter,
@@ -251,6 +258,8 @@ class MuZero:
                 )
                 writer.add_scalar("3.Loss/actor_loss", info["actor_loss"], counter)
                 writer.add_scalar("3.Loss/dynamic_loss", info["dynamic_loss"], counter)
+                writer.add_scalar("3.Loss/policy_loss", info["policy_loss"], counter)
+                writer.add_scalar("3.Loss/value_loss", info["value_loss"], counter)
                 writer.add_scalar("3.Loss/total_loss", info["total_loss"], counter)
                 print(
                     f'Last test reward: {info["total_reward"]:.2f}. Training step: {info["training_step"]}/{self.config.training_steps}. Played games: {info["num_played_games"]}. Loss: {info["total_loss"]:.2f}',
@@ -261,23 +270,23 @@ class MuZero:
         except KeyboardInterrupt:
             pass
 
-        self.terminate_workers()
+        self.terminate_workers(writer)
 
-        # if self.config.save_model:
-        #     # Persist replay buffer to disk
-        #     path = self.config.results_path / "replay_buffer.pkl"
-        #     print(f"\n\nPersisting replay buffer games to disk at {path}")
-        #     pickle.dump(
-        #         {
-        #             "buffer": self.replay_buffer,
-        #             "num_played_games": self.checkpoint["num_played_games"],
-        #             "num_played_steps": self.checkpoint["num_played_steps"],
-        #             "num_reanalysed_games": self.checkpoint["num_reanalysed_games"],
-        #         },
-        #         open(path, "wb"),
-        #     )
+        if self.config.save_model:
+            # Persist replay buffer to disk
+            path = self.config.buffer_path / "replay_buffer.pkl"
+            print(f"\n\nPersisting replay buffer games to disk at {path}")
+            pickle.dump(
+                {
+                    "buffer": self.replay_buffer,
+                    "num_played_games": self.checkpoint["num_played_games"],
+                    "num_played_steps": self.checkpoint["num_played_steps"],
+                    "num_reanalysed_games": self.checkpoint["num_reanalysed_games"],
+                },
+                open(path, "wb"),
+            )
 
-    def terminate_workers(self):
+    def terminate_workers(self, writer):
         """
         Softly terminate the running tasks and garbage collect the workers.
         """
@@ -297,6 +306,46 @@ class MuZero:
         self.reanalyse_worker = None
         self.replay_buffer_worker = None
         self.shared_storage_worker = None
+        writer.close()
+
+    def load_model(self, checkpoint_path=None, replay_buffer_path=None):
+        """
+        Load a model and/or a saved replay buffer.
+        Args:
+            checkpoint_path (str): Path to model.checkpoint or model.weights.
+            replay_buffer_path (str): Path to replay_buffer.pkl
+        """
+        # Load checkpoint
+        if checkpoint_path:
+            parent_dir = pathlib.Path(__file__).resolve().parents[0]
+            checkpoint_path = pathlib.Path(parent_dir / checkpoint_path)
+            self.checkpoint = torch.load(checkpoint_path)
+            print(f"\nUsing checkpoint from {checkpoint_path}")
+
+        # Load replay buffer
+        if replay_buffer_path:
+            replay_buffer_path = pathlib.Path(replay_buffer_path)
+            with open(replay_buffer_path, "rb") as f:
+                replay_buffer_infos = pickle.load(f)
+            self.replay_buffer = replay_buffer_infos["buffer"]
+            self.checkpoint["num_played_steps"] = replay_buffer_infos[
+                "num_played_steps"
+            ]
+            self.checkpoint["num_played_games"] = replay_buffer_infos[
+                "num_played_games"
+            ]
+            self.checkpoint["num_reanalysed_games"] = replay_buffer_infos[
+                "num_reanalysed_games"
+            ]
+
+            print(f"\nInitializing replay buffer with {replay_buffer_path}")
+        else:
+            print(f"Using empty buffer.")
+            self.replay_buffer = {}
+            self.checkpoint["training_step"] = 0
+            self.checkpoint["num_played_steps"] = 0
+            self.checkpoint["num_played_games"] = 0
+            self.checkpoint["num_reanalysed_games"] = 0
 
     def test(self, render=True, num_tests=1, num_gpus=0):
         """
@@ -328,6 +377,10 @@ class MuZero:
         result = np.mean([sum(history.reward_history) for history in results])
         return result
 
+    def validate(self):
+        vm = ValidateModel(self.checkpoint, self.config)
+        vm.validate(self.env)
+
 
 def play_wordle():
     env = Wordle()
@@ -345,6 +398,151 @@ def play_wordle():
                 break
         result, reward, done = env.step(word)
         print(result, reward, done)
+
+
+def load_replay_buffer():
+    try:
+        replay_buffer_path = (
+            pathlib.Path(__file__).resolve().parents[0]
+            / "dataset"
+            / "replay_buffer.pkl"
+        )
+        with open(replay_buffer_path, "rb") as f:
+            replay_buffer_infos = pickle.load(f)
+    except:
+        # Configure running options
+        options = ["Specify paths manually"] + sorted(
+            (pathlib.Path("dataset")).glob("*/")
+        )
+        options.reverse()
+        print()
+        for i in range(len(options)):
+            print(f"{i}. {options[i]}")
+
+        choice = input("Enter a number to choose a dataset to load: ")
+        valid_inputs = [str(i) for i in range(len(options))]
+        while choice not in valid_inputs:
+            choice = input("Invalid input, enter a number listed above: ")
+        choice = int(choice)
+
+        if choice == (len(options) - 1):
+            # manual path option
+            replay_buffer_path = input(
+                "Enter a path to the replay_buffer.pkl, or ENTER if none: "
+            )
+            while replay_buffer_path and not pathlib.Path(replay_buffer_path).is_file():
+                replay_buffer_path = input("Invalid replay buffer path. Try again: ")
+        else:
+            replay_buffer_path = (
+                pathlib.Path(__file__).resolve().parents[0] / options[choice]
+            )
+            if not replay_buffer_path.is_file():
+                replay_buffer_path = None
+        with open(replay_buffer_path, "rb") as f:
+            replay_buffer_infos = pickle.load(f)
+    return replay_buffer_infos
+
+
+def load_model_menu(muzero):
+    # Configure running options
+    options = ["Specify paths manually"] + sorted((pathlib.Path("weights")).glob("*/"))
+    options.reverse()
+    print()
+    for i in range(len(options)):
+        print(f"{i}. {options[i]}")
+
+    choice = input("Enter a number to choose a model to load: ")
+    valid_inputs = [str(i) for i in range(len(options))]
+    while choice not in valid_inputs:
+        choice = input("Invalid input, enter a number listed above: ")
+    choice = int(choice)
+
+    if choice == (len(options) - 1):
+        # manual path option
+        checkpoint_path = input(
+            "Enter a path to the model.checkpoint, or ENTER if none: "
+        )
+        while checkpoint_path and not pathlib.Path(checkpoint_path).is_file():
+            checkpoint_path = input("Invalid checkpoint path. Try again: ")
+        replay_buffer_path = input(
+            "Enter a path to the replay_buffer.pkl, or ENTER if none: "
+        )
+        while replay_buffer_path and not pathlib.Path(replay_buffer_path).is_file():
+            replay_buffer_path = input("Invalid replay buffer path. Try again: ")
+    else:
+        checkpoint_path = options[choice] / "model.checkpoint"
+        # replay_buffer_path = options[choice] / "replay_buffer.pkl"
+        replay_buffer_path = (
+            pathlib.Path(__file__).resolve().parents[0]
+            / "dataset"
+            / "replay_buffer.pkl"
+        )
+        if not replay_buffer_path.is_file():
+            replay_buffer_path = None
+
+    muzero.load_model(
+        checkpoint_path=checkpoint_path,
+        replay_buffer_path=replay_buffer_path,
+    )
+
+
+def model_update_step(model, buffer_info):
+    config = Config()
+    checkpoint = copy.copy(CHECKPOINT)
+    checkpoint["num_played_steps"] = buffer_info["num_played_steps"]
+    checkpoint["num_played_games"] = buffer_info["num_played_games"]
+    checkpoint["num_reanalysed_games"] = buffer_info["num_reanalysed_games"]
+    cpu_actor = CPUActor.remote()
+    cpu_weights = cpu_actor.get_initial_weights.remote(config)
+    checkpoint["weights"], _ = copy.deepcopy(ray.get(cpu_weights))
+    per_buffer = ReplayBuffer.remote(checkpoint, buffer_info["buffer"], config)
+    trainer = Trainer.options(num_cpus=0, num_gpus=0,).remote(
+        checkpoint,
+        config,
+    )
+    shared_storage_worker = SharedStorage.remote(
+        checkpoint,
+        config,
+    )
+    vm = ValidateModel(checkpoint, config)
+    vm.check_model_updates(trainer, per_buffer, shared_storage_worker)
+
+
+def validate_buffer(buffer_info):
+    config = Config()
+    config.batch_size = 4
+    checkpoint = copy.copy(CHECKPOINT)
+    checkpoint["num_played_steps"] = buffer_info["num_played_steps"]
+    checkpoint["num_played_games"] = buffer_info["num_played_games"]
+    checkpoint["num_reanalysed_games"] = buffer_info["num_reanalysed_games"]
+    per_buffer = ReplayBuffer.remote(checkpoint, buffer_info["buffer"], config)
+    try:
+        while True:
+            next_batch = per_buffer.get_batch.remote()
+            index_batch, batch = ray.get(next_batch)
+            (
+                state_batch,
+                action_batch,
+                value_batch,
+                reward_batch,
+                policy_batch,
+                weight_batch,
+                result_batch,
+                word_batch,
+                gradient_scale_batch,
+            ) = batch
+            print(f"\nindex_batch {index_batch}")
+            print(f"\nstate_batch {state_batch}")
+            print(f"\naction_batch {action_batch}")
+            print(f"\nvalue_batch {value_batch}")
+            print(f"\nreward_batch {reward_batch}")
+            print(f"\npolicy_batch {policy_batch}")
+            print(f"\nweight_batch {weight_batch}")
+            print(f"\nresult_batch {result_batch}")
+            print(f"\ngradient_scale_batch {gradient_scale_batch}")
+            input(f"press ENTER to continue, or ctrl c to quit")
+    except KeyboardInterrupt:
+        return
 
 
 if __name__ == "__main__":
@@ -375,22 +573,46 @@ if __name__ == "__main__":
         "--epochs",
         "-e",
         dest="epochs",
-        default=5000,
+        default=500,
         type=int,
         help="training epochs",
-    )
-    parser.add_argument(
-        "--train_type",
-        "-t",
-        dest="train_type",
-        default=Train.DYNAMICS,
-        type=str,
-        metavar=f"{Train.REGULAR},{Train.MCTS},{Train.DYNAMICS}",
-        help="training style",
     )
     args = parser.parse_args()
 
     # main(args.resume, args.model, args.epochs, args.train_type)
     mu_zero = MuZero()
-    mu_zero.train()
+
+    while True:
+        # Configure running options
+        options = [
+            "Train",
+            "Load pretrained model",
+            "Validate Model",
+            "Load and examine buffer",
+            "check model updates",
+            "Exit",
+        ]
+        print()
+        for i in range(len(options)):
+            print(f"{i}. {options[i]}")
+
+        choice = input("Enter a number to choose an action: ")
+        valid_inputs = [str(i) for i in range(len(options))]
+        while choice not in valid_inputs:
+            choice = input("Invalid input, enter a number listed above: ")
+        choice = int(choice)
+        if choice == 0:
+            mu_zero.train()
+        elif choice == 1:
+            load_model_menu(mu_zero)
+        elif choice == 2:
+            mu_zero.validate()
+        elif choice == 3:
+            buffer_info = load_replay_buffer()
+            validate_buffer(buffer_info)
+        elif choice == 4:
+            buffer_info = load_replay_buffer()
+            model_update_step(mu_zero, buffer_info)
+        else:
+            break
     ray.shutdown()
