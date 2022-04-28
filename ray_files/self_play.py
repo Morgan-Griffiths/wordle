@@ -189,7 +189,6 @@ class SelfPlay:
                     self.config.temperature_threshold,
                     False,
                 )
-
                 replay_buffer.save_game.remote(game_history, shared_storage)
 
             else:
@@ -217,6 +216,18 @@ class SelfPlay:
             # Managing the self-play / training ratio
             if not test_mode and self.config.self_play_delay:
                 time.sleep(self.config.self_play_delay)
+            if not test_mode and self.config.ratio:
+                while (
+                    ray.get(shared_storage.get_info.remote("training_step"))
+                    / max(
+                        1, ray.get(shared_storage.get_info.remote("num_played_steps"))
+                    )
+                    < self.config.ratio
+                    and ray.get(shared_storage.get_info.remote("training_step"))
+                    < self.config.training_steps
+                    and not ray.get(shared_storage.get_info.remote("terminate"))
+                ):
+                    time.sleep(0.5)
 
         # self.close_game()
 
@@ -249,7 +260,6 @@ class SelfPlay:
                     self.env.visualize_state()
 
                 game_history.store_search_statistics(root, self.config.action_space)
-
                 # Next batch
                 game_history.result_history.append(
                     state[self.env.turn - 1, :, Embeddings.RESULT]
@@ -261,5 +271,4 @@ class SelfPlay:
                     game_history.word_history.append(
                         self.env.word_to_action(self.env.word)
                     )
-
         return game_history

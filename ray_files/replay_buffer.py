@@ -85,7 +85,6 @@ class ReplayBuffer:
             self.config.batch_size
         ):
             game_pos, pos_prob = self.sample_position(game_history)
-            # print("game_pos, pos_prob", game_pos, pos_prob)
             (
                 states,
                 values,
@@ -95,10 +94,7 @@ class ReplayBuffer:
                 result_targets,
                 word_targets,
             ) = self.make_target(game_history, game_pos)
-
-            # print(
-            #     "values, rewards, policies, actions", values, rewards, policies, actions
-            # )
+            
             index_batch.append([game_id, game_pos])
             state_batch.append(states)
             action_batch.append(actions)

@@ -6,7 +6,7 @@ import copy
 from ML.networks import MuZeroNet, dict_to_cpu
 import torch.nn.functional as F
 
-from globals import DynamicOutputs, PolicyOutputs,State
+from globals import DynamicOutputs, PolicyOutputs, State
 
 
 @ray.remote
@@ -116,7 +116,7 @@ class Trainer:
             word_batch,
             gradient_scale_batch,
         ) = batch
-        assert state_batch.shape == (self.config.batch_size, State.SHAPE)
+        assert state_batch.shape == (self.config.batch_size, *State.SHAPE)
         assert value_batch.shape == (self.config.batch_size, 1)
         assert reward_batch.shape == (self.config.batch_size, 1)
         assert policy_batch.shape == (self.config.batch_size, self.config.action_space)
