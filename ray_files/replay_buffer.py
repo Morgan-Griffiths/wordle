@@ -7,7 +7,7 @@ import ray
 import torch
 
 from ML.networks import MuZeroNet
-from globals import Embeddings, PolicyOutputs, result_index_dict
+from globals import Embeddings, PolicyOutputs, result_index_dict, State
 
 
 @ray.remote
@@ -76,8 +76,9 @@ class ReplayBuffer:
             result_batch,
             value_batch,
             policy_batch,
+            word_batch,
             gradient_scale_batch,
-        ) = ([], [], [], [], [], [], [], [])
+        ) = ([], [], [], [], [], [], [], [], [])
         weight_batch = [] if self.config.PER else None
 
         for game_id, game_history, game_prob in self.sample_n_games(
@@ -92,6 +93,7 @@ class ReplayBuffer:
                 policies,
                 actions,
                 result_targets,
+                word_targets,
             ) = self.make_target(game_history, game_pos)
 
             # print(
@@ -104,6 +106,7 @@ class ReplayBuffer:
             reward_batch.append(rewards)
             policy_batch.append(policies)
             result_batch.append(result_targets)
+            word_batch.append(word_targets)
             gradient_scale_batch.append(
                 [
                     min(
@@ -120,21 +123,25 @@ class ReplayBuffer:
             weight_batch = np.array(weight_batch, dtype="float32") / max(weight_batch)
 
         state_batch = (
-            torch.tensor(state_batch).long().view(self.config.batch_size, 6, 5, 2)
+            torch.tensor(state_batch).long().view(self.config.batch_size, *State.SHAPE)
         )
         value_batch = torch.tensor(value_batch).float()
         reward_batch = torch.tensor(reward_batch).float()
         policy_batch = (
-            torch.tensor(policy_batch).float().view(self.config.batch_size, 5)
+            torch.tensor(policy_batch)
+            .float()
+            .view(self.config.batch_size, self.config.action_space)
         )
         action_batch = torch.tensor(action_batch).long().view(self.config.batch_size)
         result_batch = torch.tensor(result_batch).long().view(self.config.batch_size)
-        assert state_batch.shape == (self.config.batch_size, 6, 5, 2)
+        word_batch = torch.tensor(word_batch).long().view(self.config.batch_size)
+        assert state_batch.shape == (self.config.batch_size, *State.SHAPE)
         assert value_batch.shape == (self.config.batch_size, 1)
         assert reward_batch.shape == (self.config.batch_size, 1)
-        assert policy_batch.shape == (self.config.batch_size, 5)
+        assert policy_batch.shape == (self.config.batch_size, self.config.action_space)
         assert result_batch.dim() == 1
         assert action_batch.dim() == 1
+        assert word_batch.dim() == 1
         # state_batch: batch, channels, height, width
         # action_batch: batch, num_unroll_steps+1
         # value_batch: batch, num_unroll_steps+1
@@ -152,6 +159,7 @@ class ReplayBuffer:
                 policy_batch,
                 weight_batch,
                 result_batch,
+                word_batch,
                 gradient_scale_batch,
             ),
         )
@@ -249,25 +257,22 @@ class ReplayBuffer:
     def compute_target_value(self, game_history, index):
         # The value target is the discounted root value of the search tree td_steps into the
         # future, plus the discounted sum of all rewards until then.
-        bootstrap_index = index + self.config.td_steps
-        if bootstrap_index < len(game_history.root_values):
-            root_values = (
-                game_history.root_values
-                if game_history.reanalysed_predicted_root_values is None
-                else game_history.reanalysed_predicted_root_values
-            )
-            last_step_value = root_values[bootstrap_index]
+        # bootstrap_index = index + self.config.td_steps
+        # if bootstrap_index < len(game_history.root_values):
+        #     root_values = (
+        #         game_history.root_values
+        #         if game_history.reanalysed_predicted_root_values is None
+        #         else game_history.reanalysed_predicted_root_values
+        #     )
+        #     last_step_value = root_values[bootstrap_index]
 
-            value = last_step_value * self.config.discount_rate ** self.config.td_steps
-        else:
-            value = 0
-
-        for i, reward in enumerate(
-            game_history.reward_history[index + 1 : bootstrap_index + 1]
-        ):
-            # The value is oriented from the perspective of the current player
-            value += reward * self.config.discount_rate ** i
-
+        #     value = last_step_value * self.config.discount_rate ** self.config.td_steps
+        # else:
+        #     value = 0
+        end_reward = game_history.reward_history[-1]
+        value = end_reward * self.config.discount_rate ** (
+            len(game_history.reward_history) - index
+        )
         return value
 
     def make_target(self, game_history, state_index):
@@ -281,7 +286,9 @@ class ReplayBuffer:
             target_policies,
             actions,
             result_targets,
+            word_targets,
         ) = (
+            [],
             [],
             [],
             [],
@@ -295,23 +302,16 @@ class ReplayBuffer:
         # if current_index < len(game_history.root_values):
         value = self.compute_target_value(game_history, state_index)
         target_values.append(value)
-        assert game_history.state_history[state_index].shape == (
-            6,
-            5,
-            2,
-        ), f"expect (6,5,2) got {print(game_history.state_history[state_index].shape)}"
+        assert (
+            game_history.state_history[state_index].shape == State.SHAPE
+        ), f"Expected {State.SHAPE} got {game_history.state_history[state_index].shape}"
         target_states.append(game_history.state_history[state_index])
         target_rewards.append(game_history.reward_history[state_index])
         target_policies.append(game_history.child_visits[state_index])
         actions.append(game_history.action_history[state_index])
+        word_targets.append(game_history.word_history[state_index])
         result_targets.append(
-            result_index_dict[
-                tuple(
-                    game_history.state_history[state_index][
-                        state_index, :, Embeddings.RESULT
-                    ]
-                )
-            ]
+            result_index_dict[tuple(game_history.result_history[state_index])]
         )
         # elif current_index == len(game_history.root_values):
         #     target_values.append(0)
@@ -343,6 +343,7 @@ class ReplayBuffer:
             target_policies,
             actions,
             result_targets,
+            word_targets,
         )
 
 
