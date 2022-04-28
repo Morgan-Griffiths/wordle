@@ -192,8 +192,8 @@ class MCTS:
                         node.parent.state.numpy(),
                         dictionary_index_to_word[action],
                         np.array(result),
+                        np.repeat(action, 5),
                     )
-                    # print("next_state", next_state)
                     node.children[state_choice] = Node(
                         parent=node, prior=node.state_probs[state_choice]
                     )
