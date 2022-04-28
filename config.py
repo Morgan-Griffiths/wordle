@@ -22,7 +22,7 @@ class Config:
     PER = True
     # MUZERO
     save_model = True
-    checkpoint_interval = 10
+    checkpoint_interval = 5
     discount_rate = 0.85
     epsilon = 0.5
     action_space = 10
@@ -38,9 +38,10 @@ class Config:
     revisit_policy_search_rate = 0
     self_play_delay = 0  # Number of seconds to wait after each played game
     training_delay = 0  # Number of seconds to wait after each training step
+    ratio = None  # Desired training steps per self played step ratio. Equivalent to a synchronous version, training can take much longer. Set it to None to disable it
     temperature_threshold = None  # Number of moves before dropping the temperature given by visit_softmax_temperature_fn to 0 (ie selecting the best action). If None, visit_softmax_temperature_fn is used every time
-    num_workers = 1
-    training_steps = 1000
+    num_workers = 2  # Number of simultaneous threads/workers self-playing to feed the replay buffer
+    training_steps = 500
     td_steps = 6
     reanalyse_on_gpu = True
     selfplay_on_gpu = True
