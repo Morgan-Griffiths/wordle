@@ -108,7 +108,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     print(args)
-    network_path = "weights/policy_test"
+    network_path = "results/policy_test"
     loss_type = dataMapping[args.datatype]
     agent_params = {
         "learning_rate": args.lr,
