@@ -1,33 +1,66 @@
-from calendar import day_name
 from collections import deque
+import copy
 import sys
+import ray
 import torch
 from torch import optim
 import numpy as np
-from globals import DynamicOutputs, PolicyOutputs, index_result_dict
+from ML.networks import MuZeroNet, TestNet
+from config import Config
+from globals import DynamicOutputs, PolicyOutputs, index_result_dict, CHECKPOINT
 from experiments.generate_data import load_data
-from experiments.globals import actionSpace, DataTypes, NetworkConfig, dataMapping
+from experiments.globals import (
+    LearningCategories,
+    actionSpace,
+    DataTypes,
+    NetworkConfig,
+    dataMapping,
+)
+from collections import Counter
+import torch.nn.functional as F
+from main import MuZero, load_replay_buffer
+from ray_files.replay_buffer import ReplayBuffer
 
 
-def test_state_transition(agent_params, training_params, network_params, dataset):
-    net = agent_params["network"](network_params)
-    if training_params["resume"]:
-        net.load_state_dict(torch.load(training_params["load_path"]))
-    optimizer = optim.Adam(net.parameters(), lr=agent_params["learning_rate"])
+def test_state_transition(net, training_params, agent_params, per_buffer):
+    optimizer = optim.Adam(
+        net.parameters(), lr=agent_params["learning_rate"], weight_decay=3e-2
+    )
     criterion = training_params["criterion"](reduction="sum")
     scores = []
     score_window = deque(maxlen=100)
+    next_batch = per_buffer.get_batch.remote()
+    index_batch, batch = ray.get(next_batch)
+    (
+        state_batch,
+        action_batch,
+        value_batch,
+        reward_batch,
+        policy_batch,
+        weight_batch,
+        result_batch,
+        word_batch,
+        gradient_scale_batch,
+    ) = batch
+
+    scaling = torch.zeros(243)
+    count = Counter([r.item() for r in result_batch])
+    for key, value in count.items():
+        scaling[key] = result_batch.shape[0] / value
+    # print("count", count)
+    # print("scaling", scaling)
+    # print("state_batch", state_batch)
+    # print("target results", result_batch)
     for epoch in range(training_params["epochs"]):
         sys.stdout.write("\r")
-        optimizer.zero_grad()
-        states, actions = dataset["trainX"]
-        outputs: DynamicOutputs = net(
-            torch.as_tensor(states).long(),
-            torch.as_tensor(actions).long(),
+        outputs: DynamicOutputs = net.dynamics(
+            state_batch,
+            action_batch.unsqueeze(-1),
         )
-        target_results, target_rewards = dataset["trainY"]
-        loss = criterion(outputs.state_probs, torch.as_tensor(target_results))
+        loss = F.nll_loss(outputs.state_probs, result_batch)
+        optimizer.zero_grad()
         loss.backward()
+        # print(net.get_gradients())
         optimizer.step()
         score_window.append(loss.item())
         scores.append(np.mean(score_window))
@@ -36,37 +69,44 @@ def test_state_transition(agent_params, training_params, network_params, dataset
         sys.stdout.flush()
         sys.stdout.write(f", loss {np.mean(score_window):.4f}")
         sys.stdout.flush()
-    print(f"Saving weights to {training_params['load_path']}")
-    torch.save(net.state_dict(), training_params["load_path"])
-    validation(net, dataset)
-    # return np.mean(score_window)
+    # print(f"Saving weights to {training_params['load_path']}")
+    # torch.save(net.state_dict(), training_params["load_path"])
+    validation(net, batch)
 
 
-def validation(network, dataset):
+def validation(network, batch):
+    (
+        state_batch,
+        action_batch,
+        value_batch,
+        reward_batch,
+        policy_batch,
+        weight_batch,
+        result_batch,
+        word_batch,
+        gradient_scale_batch,
+    ) = batch
     while True:
-        states, actions = dataset["trainX"]
-        target_results, target_rewards = dataset["trainY"]
-        print(f"Number of states {len(states)}")
+        print(f"Number of states {len(state_batch)}")
         try:
-            sample_idx = int(input(f"Pick a number between 0-{len(states)}"))
+            sample_idx = int(input(f"Pick a number between 0-{len(state_batch)-1}"))
         except Exception as e:
             print(e)
         # sample_idx = np.random.choice(len(states))
-        state, action = states[sample_idx], actions[sample_idx]
-        target_result, target_reward = (
-            target_results[sample_idx],
-            target_rewards[sample_idx],
-        )
-        state = torch.as_tensor(state).long().unsqueeze(0)
-        action = torch.as_tensor(action).long().unsqueeze(0)
-        print("state", state, state.shape)
-        print("action", action, action.shape)
+        state, action = state_batch[sample_idx], action_batch[sample_idx]
+        target_result = result_batch[sample_idx]
         with torch.no_grad():
-            s_prime, s_logits, reward, reward_logits = network(state, action)
-            print("s_prime", s_prime)
-            print("target_result", index_result_dict[target_result])
-            print("reward", reward)
-            print("target_reward", target_reward)
+            outputs: DynamicOutputs = network.dynamics(
+                state.unsqueeze(0), action.view(1, 1)
+            )
+            print("state", state)
+            print("action", action)
+            print(
+                "actual state prob",
+                torch.exp(outputs.state_probs[0][target_result.item()]),
+            )
+            print("winning state prob", torch.exp(outputs.state_probs[0][-1]))
+            print("target_result", index_result_dict[target_result.item()])
 
 
 if __name__ == "__main__":
@@ -80,35 +120,39 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "-d",
-        "--datatype",
-        default=DataTypes.RANDOM,
-        type=str,
-        metavar=f"[{DataTypes.LETTERS},{DataTypes.THRESHOLD},{DataTypes.WORDLE},{DataTypes.MULTI_TARGET},{DataTypes.CONSTELLATION},{DataTypes.RANDOM}]",
-        help="Which dataset to train on",
-    )
-    parser.add_argument(
         "-e", "--epochs", help="Number of training epochs", default=100, type=int
     )
+    parser.add_argument("-b", "--batch", help="Batch size", default=4, type=int)
     parser.add_argument(
         "--resume", help="resume training from an earlier run", action="store_true"
     )
     parser.add_argument(
-        "-lr", help="resume training from an earlier run", type=float, default=0.003
+        "-lr", help="resume training from an earlier run", type=float, default=3e-3
     )
     parser.add_argument(
         "-v", dest="validate", help="validate the trained network", action="store_true"
     )
     parser.set_defaults(resume=False)
     parser.set_defaults(validate=False)
-
     args = parser.parse_args()
     print(args)
+
+    config = Config()
+    config.lr_init = args.lr
+    config.batch_size = args.batch
+    buffer_info = load_replay_buffer()
+    checkpoint = copy.copy(CHECKPOINT)
+    checkpoint["num_played_steps"] = buffer_info["num_played_steps"]
+    checkpoint["num_played_games"] = buffer_info["num_played_games"]
+    checkpoint["num_reanalysed_games"] = buffer_info["num_reanalysed_games"]
+    per_buffer = ReplayBuffer.remote(checkpoint, buffer_info["buffer"], config)
+    # mu_zero = MuZeroNet(config)
+    mu_zero = TestNet(config)
+
     network_path = "weights/dynamics"
-    loss_type = dataMapping[args.datatype]
+    # loss_type = dataMapping[args.datatype]
     agent_params = {
         "learning_rate": args.lr,
-        "network": NetworkConfig.DataModels[args.datatype],
         "save_dir": "checkpoints",
         "save_path": network_path,
         "load_path": network_path,
@@ -116,21 +160,22 @@ if __name__ == "__main__":
     training_params = {
         "resume": args.resume,
         "epochs": args.epochs,
-        "criterion": NetworkConfig.LossFunctions[loss_type],
-        "network": NetworkConfig.DataModels[args.datatype],
+        "criterion": NetworkConfig.LossFunctions[
+            LearningCategories.MULTICLASS_CATEGORIZATION
+        ],
         "load_path": network_path,
     }
-    network_params = {
-        "seed": 346,
-        "nA": actionSpace[args.datatype],
-        "load_path": network_path,
-        "emb_size": 16,
-    }
-    dataset = load_data(args.datatype)
-    if args.validate:
-        net = agent_params["network"](network_params)
-        net.load_state_dict(torch.load(network_path))
-        net.eval()
-        validation(net, dataset)
-    else:
-        test_state_transition(agent_params, training_params, network_params, dataset)
+    # network_params = {
+    #     "seed": 346,
+    #     "nA": actionSpace[args.datatype],
+    #     "load_path": network_path,
+    #     "emb_size": 16,
+    # }
+    # dataset = load_data(args.datatype)
+    # if args.validate:
+    #     net = agent_params["network"](network_params)
+    #     net.load_state_dict(torch.load(network_path))
+    #     net.eval()
+    #     validation(net, dataset)
+    # else:
+    test_state_transition(mu_zero, training_params, agent_params, per_buffer)
