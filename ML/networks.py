@@ -83,12 +83,15 @@ def mlp(
 
 
 class Preprocess(nn.Module):
-    def __init__(self):
+    def __init__(self, config):
         super(Preprocess, self).__init__()
         self.result_emb = nn.Embedding(
             Tokens.EXACT + 1, Dims.EMBEDDING_SIZE, padding_idx=0
         )
         self.letter_emb = nn.Embedding(28, Dims.EMBEDDING_SIZE, padding_idx=0)
+        self.action_emb = nn.Embedding(
+            config.action_space, Dims.EMBEDDING_SIZE, padding_idx=0
+        )
         self.col_emb = nn.Embedding(5, Dims.EMBEDDING_SIZE)
         self.row_emb = nn.Embedding(6, Dims.EMBEDDING_SIZE)
         self.positional_emb = nn.Embedding(30, Dims.EMBEDDING_SIZE)
@@ -98,6 +101,7 @@ class Preprocess(nn.Module):
         B = state.shape[0]
         res = self.result_emb(state[:, :, :, Embeddings.RESULT])
         letter = self.letter_emb(state[:, :, :, Embeddings.LETTER])
+        word = self.action_emb(state[:, :, 0, Embeddings.WORD])
         rows = torch.arange(0, 6).repeat(B, 5).reshape(B, 5, 6).permute(0, 2, 1)
         cols = torch.arange(0, 5).repeat(B, 6).reshape(B, 6, 5)
         row_embs = self.row_emb(rows)
@@ -105,17 +109,20 @@ class Preprocess(nn.Module):
         positional_embs = row_embs + col_embs
         # 1, 9, 6, 2, 8
         # [1, 6, 5, 8]
-        # print(res.shape, letter.shape, positional_embs.shape)
         x = res + letter + positional_embs
+        y = (word + row_embs[:, :, 0]).unsqueeze(-2)
+        # y.shape = (B,6,1,8)
+        # x.shape = (B,6,5,8)
+        x = torch.cat((x, y), dim=-2)
         # word = self.word_emb(state[:, :, 0, Embeddings.WORD].unsqueeze(-1))
         # x = torch.cat((x, word), dim=-2)
         return x
 
 
 class StateEncoder(nn.Module):
-    def __init__(self):
+    def __init__(self, config):
         super(StateEncoder, self).__init__()
-        self.process_layer = Preprocess()
+        self.process_layer = Preprocess(config)
         self.hidden_state = nn.Linear(240, Dims.HIDDEN_STATE)
 
     def forward(self, state):
@@ -125,39 +132,76 @@ class StateEncoder(nn.Module):
         return hidden_state
 
 
-class StateActionTransition(nn.Module):
+class TestNet(nn.Module):
     def __init__(
         self,
-        hidden_dims=(Dims.EMBEDDING_SIZE * 5, 256, 256),
-        output_dims=(256 * 6 + Dims.EMBEDDING_SIZE, 256, 256),
+        config,
+        hidden_dims=(Dims.EMBEDDING_SIZE * 5, 256, 508),
+        output_dims=(Dims.TRANSFORMER_OUTPUT + Dims.EMBEDDING_SIZE, 256, 256),
     ):
-        super(StateActionTransition, self).__init__()
-        self.process_layer = Preprocess()
-        self.action_emb = nn.Embedding(12972, Dims.EMBEDDING_SIZE)
-        self.action_position = nn.Embedding(6, Dims.EMBEDDING_SIZE)
-        # self.process_turn = Threshold({"n_layers": 2, "seed": 1234})
-        # self.process_turn.load_state_dict(torch.load("weights/turn_output"))
-        self.ff_layers = [
-            nn.Linear(hidden_dims[i], hidden_dims[i + 1])
-            for i in range(len(hidden_dims) - 1)
-        ]
-        self.output_layers = [
-            nn.Linear(output_dims[i], output_dims[i + 1])
-            for i in range(1, len(output_dims) - 1)
-        ]
+        super(TestNet, self).__init__()
+        self.process_input = Preprocess(config)
+        self.action_emb = nn.Embedding(6, 10)
+        # self.lstm = nn.LSTM(Dims.TRANSFORMER_INPUT, 64, bidirectional=True)
         self.transformer = CTransformer(
-            Dims.TRANSFORMER_INPUT,
-            heads=8,
+            10,
+            heads=5,
+            depth=5,
+            seq_length=7,
+            num_classes=243,
+        )
+        self.fc_action1 = nn.Linear(253, 243)
+        self.fc_action2 = nn.Linear(243, 243)
+        self.output = nn.Linear(243, Dims.RESULT_STATE)
+
+    def forward(self, state, action):
+        assert state.dim() == 4, f"expect dim of 4 got {state.shape}"
+        assert action.dim() == 2, f"expect dim of 2 got {action.shape}"
+        B = state.shape[0]
+        a = self.action_emb(action)
+        if a.dim() == 2:  # for batch training
+            a = a.unsqueeze(1)
+        # (B,6,5,2)
+        x = state.view(B, 6, -1)
+        # x = self.process_input(state).view(B, 6, -1)
+        x = torch.cat((x, a), dim=1)
+        # (B,6,5,8)
+        x = self.transformer(x)
+        # (B,500)
+        return DynamicOutputs(
+            F.log_softmax(x, dim=1),
+            None,
+            None,
+        )
+
+    def dynamics(self, state, action):
+        return self.forward(state, action)
+
+    def get_gradients(self):
+        grads = []
+        for p in self.parameters():
+            grad = None if p.grad is None else p.grad.data.cpu().numpy()
+            grads.append(grad)
+        return grads
+
+    def set_gradients(self, gradients):
+        for g, p in zip(gradients, self.parameters()):
+            if g is not None:
+                p.grad = torch.from_numpy(g)
+
+
+class StateActionTransition(nn.Module):
+    def __init__(self, config):
+        super(StateActionTransition, self).__init__()
+        # self.process_input = Preprocess()
+        self.action_emb = nn.Embedding(12972, 10)
+        self.transformer = CTransformer(
+            10,
+            heads=5,
             depth=5,
             seq_length=6,
-            num_classes=Dims.OUTPUT,
+            num_classes=Dims.RESULT_STATE,
         )
-        self.output_layer = nn.Linear(
-            Dims.TRANSFORMER_OUTPUT + Dims.EMBEDDING_SIZE, 256
-        )
-        self.result = nn.Linear(hidden_dims[-1], Dims.RESULT_STATE)
-        self.average_reward = nn.Linear(hidden_dims[-1], 1)
-        self.reward = nn.Linear(hidden_dims[-1], Dims.RESULT_STATE)
 
     def get_weights(self):
         return dict_to_cpu(self.state_dict())
@@ -166,23 +210,29 @@ class StateActionTransition(nn.Module):
         assert state.dim() == 4, f"expect dim of 4 got {state.shape}"
         assert action.dim() == 2, f"expect dim of 2 got {action.shape}"
         B = state.shape[0]
-        x = self.process_layer(state).view(B, 6, -1)
+        # (B,6,5,3)
+        prev_actions = self.action_emb(state[:, :, 0, Embeddings.WORD])
+        # (B,6,emb_size)
+        a = self.action_emb(action)
+        # (B,emb_size)
+        if a.dim() == 2:
+            a = a.unsqueeze(1)
+        x = state[:, :, :, : Embeddings.WORD].contiguous().view(B, 6, -1)
+        # B,6,10
+        similarity = torch.bmm(prev_actions, a.view(B, 10, 1))
+        x = x + similarity
+        # B,6,10
+        x = torch.cat((x, a), dim=1)
+        # B, 7, 40
+        x = self.transformer(x)
+        # B, 243
+        m = Categorical(logits=x)
         turns = torch.count_nonzero(state, dim=1)[:, 0, 0].view(-1, 1)
         bools = torch.where(turns >= 5, 1, 0)
         rewards = reward_over_states(bools)
-        a = self.action_emb(action)
-        x = self.transformer(x)
-        if a.dim() == 3:  # for batch training
-            a = a.squeeze(1)
-        s = torch.cat((x.view(B, -1), a), dim=-1)
-        s = F.leaky_relu(self.output_layer(s))
-        state_logits = self.result(s)
-        m = Categorical(logits=state_logits)
-        result = m.sample()
         return DynamicOutputs(
-            index_result_dict[result[0].item()],
+            F.log_softmax(x, dim=1),
             m.probs,
-            rewards[:, result[0].item()],
             rewards,
         )
 
@@ -191,12 +241,9 @@ class ZeroPolicy(nn.Module):
     def __init__(self, config):
         super(ZeroPolicy, self).__init__()
         self.seed = torch.manual_seed(1234)
-        self.process_input = Preprocess()
-        self.fc1 = nn.Linear(240, 128)
-        self.fc2 = nn.Linear(128, 128)
-        # self.lstm = nn.LSTM(Dims.TRANSFORMER_INPUT, 128, bidirectional=True)
+        self.process_input = Preprocess(config)
         self.transformer = CTransformer(
-            Dims.TRANSFORMER_INPUT,
+            48,
             heads=8,
             depth=5,
             seq_length=6,
@@ -214,10 +261,9 @@ class ZeroPolicy(nn.Module):
         # B,26
         B = state.shape[0]
         x = self.process_input(state).view(B, 6, -1)
-        # [1, 6, 40]
-        # lstm_out, _ = self.lstm(x)
-        # lstm_out = lstm_out.view(B, -1)
+        # [B, 6, 40]
         x = self.transformer(x)
+        # [B, 500]
         # action head
         act = self.fc_action2(F.leaky_relu(self.fc_action1(x)))
         maxa = torch.max(act)
@@ -226,23 +272,23 @@ class ZeroPolicy(nn.Module):
         m = Categorical(probs)
         action = m.sample()
         v = self.value_output(x)
-        return PolicyOutputs(action, m.probs, v)
+        return PolicyOutputs(action, F.log_softmax(m.logits, dim=1), m.probs, v)
 
 
 class MuZeroNet(AbstractNetwork):
     def __init__(self, config):
         super(MuZeroNet, self).__init__()
         self._policy = ZeroPolicy(config)
-        self._representation = StateEncoder()
-        self._dynamics = StateActionTransition()
+        self._representation = StateEncoder(config)
+        self._dynamics = StateActionTransition(config)
 
     def representation(self, state):
         return self._representation(state)
 
-    def dynamics(self, state, action):
+    def dynamics(self, state, action) -> DynamicOutputs:
         return self._dynamics(state, action)
 
-    def policy(self, state):
+    def policy(self, state) -> PolicyOutputs:
         return self._policy(state)
 
 
