@@ -2,3 +2,5 @@
 *.npy
 dataset/
 assets/
+weights/
+results/
