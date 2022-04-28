@@ -22,7 +22,7 @@ class Config:
     PER = True
     # MUZERO
     save_model = True
-    checkpoint_interval = 50
+    checkpoint_interval = 10
     discount_rate = 0.85
     epsilon = 0.5
     action_space = 10
