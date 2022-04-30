@@ -149,7 +149,7 @@ class MCTS:
                 node: Node = root
                 while node.reward not in [1, -1]:
                     if node.action_probs is None:
-                        outputs: PolicyOutputs = agent.policy(node.state)
+                        outputs: PolicyOutputs = agent.policy(node.state.to(next(agent.parameters()).device))
                         node.action_probs = outputs.probs[0]
                     # pick action
                     # print(len(node.children), node.expanded())
@@ -157,24 +157,30 @@ class MCTS:
                     #     # ucb pick
                     #     action, node = node.select_child(self.config)
                     # else:
-                    if np.random.random() < self.epsilon:
+                    if node.expanded() and np.random.random() < self.epsilon:
                         # random action
-                        action = np.random.randint(self.config.action_space)
+                        # action = np.random.randint(self.config.action_space)
+                        action, _ = node.select_child(self.config)
                     else:
                         # network picks
                         action = np.random.choice(
-                            len(node.action_probs), p=node.action_probs.numpy()
+                            len(node.action_probs), p=node.action_probs.cpu().numpy()
                         )
+                    # if add_exploration_noise:
+                    #     root.add_exploration_noise(
+                    #         dirichlet_alpha=self.config.root_dirichlet_alpha,
+                    #         exploration_fraction=self.config.root_exploration_fraction,
+                    #     )
                     # if action previous unexplored, expand node
                     if action not in node.children:
                         node.children[action] = Node(
                             parent=node, prior=node.action_probs[action]
                         )
                         outputs: DynamicOutputs = agent.dynamics(
-                            node.state,
-                            torch.as_tensor(action).view(1, 1),
+                            node.state.to(next(agent.parameters()).device),
+                            torch.as_tensor(action).view(1, 1).to(next(agent.parameters()).device),
                         )
-                        node.children[action].state_probs = outputs.state_probs.numpy()[
+                        node.children[action].state_probs = outputs.state_probs.cpu().numpy()[
                             0
                         ]
                         node.children[action].reward_outcomes = outputs.rewards[0]
@@ -189,7 +195,7 @@ class MCTS:
                     )
                     # get previous state -> new state
                     next_state = state_transition(
-                        node.parent.state.numpy(),
+                        node.parent.state.cpu().numpy(),
                         dictionary_index_to_word[action],
                         np.array(result),
                         np.repeat(action, 5),
@@ -208,6 +214,7 @@ class MCTS:
             "max_tree_depth": max_tree_depth,
             "root_predicted_value": root.value,
         }
+        # self.decay_epsilon()
         return root, extra_info
 
 
