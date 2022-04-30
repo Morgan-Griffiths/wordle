@@ -20,12 +20,16 @@ from torch.utils.tensorboard import SummaryWriter
 
 
 class MuZero:
-    def __init__(self):
-        self.config = Config()
+    def __init__(self,config):
+        self.config = config
         self.env = Wordle(word_restriction=self.config.action_space)
         np.random.seed(self.config.seed)
         torch.manual_seed(self.config.seed)
-        self.num_gpus = torch.cuda.device_count()
+        if config.train_on_gpu:
+            self.num_gpus = torch.cuda.device_count()
+        else:
+            self.num_gpus = 0
+        print('Is gpu avail ',torch.cuda.is_available())
         print("Number of processors: ", mp.cpu_count())
         print(f"Number of GPUs: {self.num_gpus}")
         total_gpus = self.num_gpus
@@ -68,14 +72,15 @@ class MuZero:
                 num_gpus_per_worker = math.floor(num_gpus_per_worker)
         else:
             num_gpus_per_worker = 0
-
+        # num_gpus_per_worker = 0.1
+        print("num_gpus_per_worker",num_gpus_per_worker)
         # Initialize workers
         self.training_worker = Trainer.options(
             num_cpus=0,
             num_gpus=num_gpus_per_worker if self.config.train_on_gpu else 0,
         ).remote(self.checkpoint, self.config)
 
-        self.shared_storage_worker = SharedStorage.remote(
+        self.shared_storage_worker = SharedStorage.options(num_cpus=0,num_gpus=num_gpus_per_worker if self.config.selfplay_on_gpu else 0,).remote(
             self.checkpoint,
             self.config,
         )
@@ -319,7 +324,7 @@ class MuZero:
         if checkpoint_path:
             parent_dir = pathlib.Path(__file__).resolve().parents[0]
             checkpoint_path = pathlib.Path(parent_dir / checkpoint_path)
-            self.checkpoint = torch.load(checkpoint_path)
+            self.checkpoint = torch.load(checkpoint_path,map_location='cpu')
             print(f"\nUsing checkpoint from {checkpoint_path}")
 
         # Load replay buffer
@@ -380,6 +385,10 @@ class MuZero:
     def validate(self):
         vm = ValidateModel(self.checkpoint, self.config)
         vm.validate(self.env)
+
+    def validate_mcts(self):
+        vm = ValidateModel(self.checkpoint, self.config)
+        vm.validate_mcts(self.env)
 
 
 def play_wordle():
@@ -488,6 +497,7 @@ def load_model_menu(muzero):
 
 def model_update_step(model, buffer_info):
     config = Config()
+    config.train_on_gpu = False
     checkpoint = copy.copy(CHECKPOINT)
     checkpoint["num_played_steps"] = buffer_info["num_played_steps"]
     checkpoint["num_played_games"] = buffer_info["num_played_games"]
@@ -510,6 +520,7 @@ def model_update_step(model, buffer_info):
 
 def validate_buffer(buffer_info):
     config = Config()
+    config.train_on_gpu = False
     config.batch_size = 4
     checkpoint = copy.copy(CHECKPOINT)
     checkpoint["num_played_steps"] = buffer_info["num_played_steps"]
@@ -577,10 +588,19 @@ if __name__ == "__main__":
         type=int,
         help="training epochs",
     )
+    parser.add_argument(
+        "--no_gpu",
+        dest="no_gpu",
+        default=False,
+        action="store_true",
+        help="training epochs",
+    )
     args = parser.parse_args()
 
     # main(args.resume, args.model, args.epochs, args.train_type)
-    mu_zero = MuZero()
+    config = Config()
+    config.train_on_gpu = not args.no_gpu
+    mu_zero = MuZero(config)
 
     while True:
         # Configure running options
@@ -588,6 +608,7 @@ if __name__ == "__main__":
             "Train",
             "Load pretrained model",
             "Validate Model",
+            "Validate MCTS",
             "Load and examine buffer",
             "check model updates",
             "Exit",
@@ -608,9 +629,11 @@ if __name__ == "__main__":
         elif choice == 2:
             mu_zero.validate()
         elif choice == 3:
+            mu_zero.validate_mcts()
+        elif choice == 4:
             buffer_info = load_replay_buffer()
             validate_buffer(buffer_info)
-        elif choice == 4:
+        elif choice == 5:
             buffer_info = load_replay_buffer()
             model_update_step(mu_zero, buffer_info)
         else:
