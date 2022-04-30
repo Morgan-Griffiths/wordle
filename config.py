@@ -15,7 +15,7 @@ class Config:
     update_every = 4
     learning_update = 0
     # PER BUFFER
-    batch_size = 64
+    batch_size = 128
     num_unroll_steps = 6
     replay_buffer_size = 1000
     PER_alpha = 0.1
@@ -34,13 +34,13 @@ class Config:
     pb_c_init = 1.25
     root_exploration_fraction = 0.25
     root_dirichlet_alpha = 0.25
-    num_simulations = 25
+    num_simulations = 100
     revisit_policy_search_rate = 0
     self_play_delay = 0  # Number of seconds to wait after each played game
     training_delay = 0  # Number of seconds to wait after each training step
     ratio = None  # Desired training steps per self played step ratio. Equivalent to a synchronous version, training can take much longer. Set it to None to disable it
     temperature_threshold = None  # Number of moves before dropping the temperature given by visit_softmax_temperature_fn to 0 (ie selecting the best action). If None, visit_softmax_temperature_fn is used every time
-    num_workers = 2  # Number of simultaneous threads/workers self-playing to feed the replay buffer
+    num_workers = 4  # Number of simultaneous threads/workers self-playing to feed the replay buffer
     training_steps = 500
     td_steps = 6
     reanalyse_on_gpu = True
