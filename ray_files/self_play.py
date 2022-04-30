@@ -136,11 +136,14 @@ class SelfPlay:
         # Fix random generator seed
         np.random.seed(seed)
         torch.manual_seed(seed)
-
+        if self.config.train_on_gpu:
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        else:
+            self.device = 'cpu'
         # Initialize the network
         self.model = MuZeroNet(config)
         self.model.set_weights(copy.deepcopy(initial_checkpoint["weights"]))
-        self.model.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+        self.model.to(self.device)
         self.model.eval()
 
     def decay_epsilon(self):

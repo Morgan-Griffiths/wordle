@@ -22,11 +22,14 @@ class Trainer:
         # Fix random generator seed
         np.random.seed(self.config.seed)
         torch.manual_seed(self.config.seed)
-
+        if self.config.train_on_gpu:
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        else:
+            self.device = 'cpu'
         # Initialize the network
         self.model = MuZeroNet(config)
         self.model.set_weights(copy.deepcopy(initial_checkpoint["weights"]))
-        self.model.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+        self.model.to(self.device)
         self.model.train()
         self.training_step = initial_checkpoint["training_step"]
         self.optimizer = torch.optim.Adam(
@@ -124,6 +127,14 @@ class Trainer:
         assert action_batch.dim() == 1
 
         device = next(self.model.parameters()).device
+        state_batch = state_batch.to(device) 
+        action_batch = action_batch.to(device) 
+        value_batch = value_batch.to(device) 
+        reward_batch = reward_batch.to(device) 
+        policy_batch = policy_batch.to(device)
+        result_batch = result_batch.to(device) 
+        word_batch = word_batch.to(device)
+
         if self.config.PER:
             weight_batch = torch.tensor(weight_batch.copy()).float().to(device)
         dynamics_outputs: DynamicOutputs = self.model.dynamics(
@@ -153,10 +164,10 @@ class Trainer:
         self.optimizer.step()
         self.training_step += 1
         # Priority update
-        target_value_scalar = np.array(reward_batch, dtype="float32")
+        target_value_scalar = np.array(reward_batch.cpu(), dtype="float32")
         priorities = np.zeros_like(target_value_scalar)
         priorities = (
-            np.abs(policy_outputs.value.detach().numpy() - target_value_scalar)
+            np.abs(policy_outputs.value.detach().cpu().numpy() - target_value_scalar)
             ** self.config.PER_alpha
         )
         shared_storage.set_info.remote(
@@ -185,7 +196,7 @@ class Trainer:
         ) = self.update_weights(batch, shared_storage)
         shared_storage.set_info.remote(
             {
-                "weights": copy.deepcopy(self.model.get_weights()),
+                "weights": copy.deepcopy(self.model.cpu().get_weights()),
                 "optimizer_state": copy.deepcopy(
                     dict_to_cpu(self.optimizer.state_dict())
                 ),

@@ -117,7 +117,7 @@ class ReplayBuffer:
 
         if self.config.PER:
             weight_batch = np.array(weight_batch, dtype="float32") / max(weight_batch)
-
+        state_batch = np.array(state_batch)
         state_batch = (
             torch.tensor(state_batch).long().view(self.config.batch_size, *State.SHAPE)
         )
