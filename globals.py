@@ -92,19 +92,39 @@ class NetworkOutput(NamedTuple):
     result_logits: Any
 
 
-@dataclass
 class DynamicOutputs:
-    state_logprobs: torch.tensor
-    state_probs: torch.tensor
-    rewards: np.array
+    def __init__(self,state_logprobs:torch.Tensor,state_probs:torch.Tensor,rewards:np.array):
+        self.state_logprobs = state_logprobs
+        self.state_probs = state_probs
+        self.rewards = rewards
+        self.n = -1
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.n < 2:
+            return (self.state_logprobs,self.state_probs,self.rewards)[self.n]
+        else:
+            raise StopIteration
 
 
-@dataclass
 class PolicyOutputs:
-    action: int
-    logprobs: torch.tensor
-    probs: torch.tensor
-    value: float
+    def __init__(self,action,logprobs,probs,value):
+        self.action = action
+        self.logprobs = logprobs
+        self.probs = probs
+        self.value = value
+        self.n = -1
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.n < 3:
+            return (self.action,self.logprobs,self.probs,self.value)[self.n]
+        else:
+            raise StopIteration
 
 
 CHECKPOINT = {
