@@ -99,13 +99,16 @@ class Preprocess(nn.Module):
     def forward(self, state: torch.tensor):
         assert state.dim() == 4
         B = state.shape[0]
+        device = state.get_device()
+        if device == -1:
+            device = 'cpu'
         res = self.result_emb(state[:, :, :, Embeddings.RESULT])
         letter = self.letter_emb(state[:, :, :, Embeddings.LETTER])
         word = self.action_emb(state[:, :, 0, Embeddings.WORD])
         rows = torch.arange(0, 6).repeat(B, 5).reshape(B, 5, 6).permute(0, 2, 1)
         cols = torch.arange(0, 5).repeat(B, 6).reshape(B, 6, 5)
-        row_embs = self.row_emb(rows)
-        col_embs = self.col_emb(cols)
+        row_embs = self.row_emb(rows.to(device))
+        col_embs = self.col_emb(cols.to(device))
         positional_embs = row_embs + col_embs
         # 1, 9, 6, 2, 8
         # [1, 6, 5, 8]
@@ -212,14 +215,17 @@ class StateActionTransition(nn.Module):
         B = state.shape[0]
         # (B,6,5,3)
         prev_actions = self.action_emb(state[:, :, 0, Embeddings.WORD])
+        norm_prev = prev_actions / torch.sqrt(prev_actions.pow(2))
         # (B,6,emb_size)
         a = self.action_emb(action)
-        # (B,emb_size)
         if a.dim() == 2:
             a = a.unsqueeze(1)
+        norm_action = a / torch.sqrt(a.pow(2))
+        # (B,emb_size)
         x = state[:, :, :, : Embeddings.WORD].contiguous().view(B, 6, -1)
         # B,6,10
-        similarity = torch.bmm(prev_actions, a.view(B, 10, 1))
+        similarity = torch.bmm(norm_prev, norm_action.view(B, 10, 1))
+        # B,6,1
         x = x + similarity
         # B,6,10
         x = torch.cat((x, a), dim=1)
@@ -278,9 +284,15 @@ class ZeroPolicy(nn.Module):
 class MuZeroNet(AbstractNetwork):
     def __init__(self, config):
         super(MuZeroNet, self).__init__()
-        self._policy = ZeroPolicy(config)
-        self._representation = StateEncoder(config)
-        self._dynamics = StateActionTransition(config)
+        self.config = config
+        if config.train_on_gpu:
+            self._policy = torch.nn.DataParallel(ZeroPolicy(config))
+            self._representation = torch.nn.DataParallel(StateEncoder(config))
+            self._dynamics = torch.nn.DataParallel(StateActionTransition(config))
+        else:
+            self._policy = ZeroPolicy(config)
+            self._representation = StateEncoder(config)
+            self._dynamics = StateActionTransition(config)
 
     def representation(self, state):
         return self._representation(state)
