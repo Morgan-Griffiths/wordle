@@ -158,8 +158,8 @@ with open("data/allowed_words.txt", "r") as f:
 
 with open("data/possible_words.txt", "r") as f:
     word_targets_dictionary = f.readlines()
-
-permutations = []
+ 
+permutations = [(0,0,0,0,0)] # zero padded
 for a in range(1, 4):
     for b in range(1, 4):
         for c in range(1, 4):
@@ -178,8 +178,10 @@ dictionary_arr = np.vstack([list(word) for word in dictionary])
 #     "AAHED",
 #     "HELMS",
 # ]
-dictionary_word_to_index = {word: i for i, word in enumerate(dictionary)}
-dictionary_index_to_word = {i: word for i, word in enumerate(dictionary)}
+dictionary_word_to_index = {word: i for i, word in enumerate(dictionary,1)}
+dictionary_index_to_word = {i: word for i, word in enumerate(dictionary,1)}
+dictionary_index_to_word[0] = '-----'
+dictionary_word_to_index['-----'] = 0
 # print(dictionary)
 alphabet = "".join("-abcdefghijklmnopqrstuvwxzy".upper().split())
 alphabet_dict = {letter: i for i, letter in enumerate(alphabet)}
