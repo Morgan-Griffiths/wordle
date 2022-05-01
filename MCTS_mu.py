@@ -166,6 +166,7 @@ class MCTS:
                         action = np.random.choice(
                             len(node.action_probs), p=node.action_probs.cpu().numpy()
                         )
+                        action += 1 # adjust for 0 padding
                     # if add_exploration_noise:
                     #     root.add_exploration_noise(
                     #         dirichlet_alpha=self.config.root_dirichlet_alpha,
@@ -174,7 +175,7 @@ class MCTS:
                     # if action previous unexplored, expand node
                     if action not in node.children:
                         node.children[action] = Node(
-                            parent=node, prior=node.action_probs[action]
+                            parent=node, prior=node.action_probs[action-1]
                         )
                         outputs: DynamicOutputs = agent.dynamics(
                             node.state.to(next(agent.parameters()).device),
@@ -188,10 +189,10 @@ class MCTS:
                     # sample state after
                     state_choice = np.random.choice(
                         len(node.state_probs), p=node.state_probs
-                    )
+                    ) + 1 # zero padding
                     result, reward = (
                         index_result_dict[state_choice],
-                        node.reward_outcomes[state_choice],
+                        node.reward_outcomes[state_choice-1],
                     )
                     # get previous state -> new state
                     next_state = state_transition(
@@ -201,7 +202,7 @@ class MCTS:
                         np.repeat(action, 5),
                     )
                     node.children[state_choice] = Node(
-                        parent=node, prior=node.state_probs[state_choice]
+                        parent=node, prior=node.state_probs[state_choice-1]
                     )
                     node = node.children[state_choice]
                     node.reward = int(reward.item())
