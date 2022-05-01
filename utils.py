@@ -17,7 +17,6 @@ from globals import (
 from prettytable import PrettyTable
 from scipy.stats import entropy
 
-
 def debug(func):
     def wrapper(*args, **kwags):
         print(f"Running {func.__name__}")
