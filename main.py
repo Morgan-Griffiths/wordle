@@ -23,6 +23,8 @@ class MuZero:
     def __init__(self,config):
         self.config = config
         self.env = Wordle(word_restriction=self.config.action_space)
+        self.config.word_to_index = self.env.dictionary_word_to_index
+        self.config.index_to_word = self.env.dictionary_index_to_word
         np.random.seed(self.config.seed)
         torch.manual_seed(self.config.seed)
         if config.train_on_gpu:
@@ -72,7 +74,7 @@ class MuZero:
                 num_gpus_per_worker = math.floor(num_gpus_per_worker)
         else:
             num_gpus_per_worker = 0
-        # num_gpus_per_worker = 0.1
+        num_gpus_per_worker = 0.25
         print("num_gpus_per_worker",num_gpus_per_worker)
         # Initialize workers
         self.training_worker = Trainer.options(
@@ -600,6 +602,7 @@ if __name__ == "__main__":
     # main(args.resume, args.model, args.epochs, args.train_type)
     config = Config()
     config.train_on_gpu = not args.no_gpu
+    config.training_steps = args.epochs
     mu_zero = MuZero(config)
 
     while True:
