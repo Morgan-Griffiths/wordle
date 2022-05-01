@@ -27,11 +27,13 @@ class Wordle:
             self.dictionary = dictionary
         self.alphabet_dict = alphabet_dict
         self.dictionary_word_to_index = {
-            word: i for i, word in enumerate(self.dictionary)
+            word: i for i, word in enumerate(self.dictionary,1)
         }
         self.dictionary_index_to_word = {
-            i: word for i, word in enumerate(self.dictionary)
+            i: word for i, word in enumerate(self.dictionary,1)
         }
+        self.dictionary_index_to_word[0] = '-----'
+        self.dictionary_word_to_index['-----'] = 0
         self.gamma = 0.05
         self.reset()
 
