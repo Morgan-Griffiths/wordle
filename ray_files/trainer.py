@@ -145,7 +145,8 @@ class Trainer:
         # policy update
         policy_outputs: PolicyOutputs = self.model.policy(state_batch)
         # policy_loss = F.nll_loss(policy_outputs.logprobs, word_batch, reduction="none")
-        policy_loss = (-policy_batch * policy_outputs.logprobs).sum(1)
+        # policy_loss = (-policy_batch * policy_outputs.logprobs).sum(1)
+        policy_loss = F.kl_div(policy_outputs.logprobs,policy_batch,reduction="none").sum(dim=1).unsqueeze(1)
         value_loss = F.smooth_l1_loss(
             reward_batch, policy_outputs.value, reduction="none"
         )
@@ -153,7 +154,7 @@ class Trainer:
 
         if self.config.PER:
             # Correct PER bias by using importance-sampling (IS) weights
-            actor_loss *= weight_batch
+            actor_loss *= weight_batch[:,None]
         loss = actor_loss.sum() + dynamic_loss
         self.optimizer.zero_grad()
         # loss = loss.mean()

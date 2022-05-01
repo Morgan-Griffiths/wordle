@@ -180,6 +180,7 @@ class SelfPlay:
         ) < self.config.training_steps and not ray.get(
             shared_storage.get_info.remote("terminate")
         ):
+            self.config.update_num_sims(ray.get(shared_storage.get_info.remote("training_step")))
             self.model.set_weights(ray.get(shared_storage.get_info.remote("weights")))
 
             if not test_mode:

@@ -23,7 +23,7 @@ class ValidateModel:
 
     def __init__(self, checkpoint, config):
         self.config = config
-
+        self.config.train_on_gpu = False
         # Initialize the network
         self.model = MuZeroNet(self.config)
         self.model.set_weights(strip_module(checkpoint["weights"]))
@@ -105,7 +105,7 @@ class ValidateModel:
                             dtype="int32",
                         )
                         actions = [action for action in root.children.keys()]
-                        action = actions[np.argmax(visit_counts)]
+                        action = actions[np.argmax(visit_counts)] + 1
                         chosen_word = env.action_to_string(action)
                         model_outputs: PolicyOutputs = self.model.policy(
                             torch.tensor(state.copy()).long().unsqueeze(0)
@@ -114,6 +114,7 @@ class ValidateModel:
                             f"model_outputs: {model_outputs.probs[:self.config.action_space]} {model_outputs.value}"
                         )
                         print("chosen_word", chosen_word)
+                        print("highest prob word", env.action_to_string(np.argmax(model_outputs.probs[:self.config.action_space].numpy())))
                         dynamic_outputs: DynamicOutputs = self.model.dynamics(
                             torch.tensor(state.copy()).long().unsqueeze(0),
                             torch.tensor(action).view(1, 1),
