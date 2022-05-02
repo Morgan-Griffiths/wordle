@@ -20,7 +20,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 
 class MuZero:
-    def __init__(self,config):
+    def __init__(self, config):
         self.config = config
         self.env = Wordle(word_restriction=self.config.action_space)
         self.config.word_to_index = self.env.dictionary_word_to_index
@@ -31,7 +31,7 @@ class MuZero:
             self.num_gpus = torch.cuda.device_count()
         else:
             self.num_gpus = 0
-        print('Is gpu avail ',torch.cuda.is_available())
+        print("Is gpu avail ", torch.cuda.is_available())
         print("Number of processors: ", mp.cpu_count())
         print(f"Number of GPUs: {self.num_gpus}")
         total_gpus = self.num_gpus
@@ -74,15 +74,18 @@ class MuZero:
                 num_gpus_per_worker = math.floor(num_gpus_per_worker)
         else:
             num_gpus_per_worker = 0
-        num_gpus_per_worker = 0.25
-        print("num_gpus_per_worker",num_gpus_per_worker)
+        # num_gpus_per_worker = 0.25
+        print("num_gpus_per_worker", num_gpus_per_worker)
         # Initialize workers
         self.training_worker = Trainer.options(
             num_cpus=0,
             num_gpus=num_gpus_per_worker if self.config.train_on_gpu else 0,
         ).remote(self.checkpoint, self.config)
 
-        self.shared_storage_worker = SharedStorage.options(num_cpus=0,num_gpus=num_gpus_per_worker if self.config.selfplay_on_gpu else 0,).remote(
+        self.shared_storage_worker = SharedStorage.options(
+            num_cpus=0,
+            num_gpus=num_gpus_per_worker if self.config.selfplay_on_gpu else 0,
+        ).remote(
             self.checkpoint,
             self.config,
         )
@@ -326,7 +329,7 @@ class MuZero:
         if checkpoint_path:
             parent_dir = pathlib.Path(__file__).resolve().parents[0]
             checkpoint_path = pathlib.Path(parent_dir / checkpoint_path)
-            self.checkpoint = torch.load(checkpoint_path,map_location='cpu')
+            self.checkpoint = torch.load(checkpoint_path, map_location="cpu")
             print(f"\nUsing checkpoint from {checkpoint_path}")
 
         # Load replay buffer
