@@ -149,7 +149,9 @@ class MCTS:
                 node: Node = root
                 while node.reward not in [1, -1]:
                     if node.action_probs is None:
-                        outputs: PolicyOutputs = agent.policy(node.state.to(next(agent.parameters()).device))
+                        outputs: PolicyOutputs = agent.policy(
+                            node.state.to(next(agent.parameters()).device)
+                        )
                         node.action_probs = outputs.probs[0]
                     # pick action
                     # print(len(node.children), node.expanded())
@@ -166,7 +168,7 @@ class MCTS:
                         action = np.random.choice(
                             len(node.action_probs), p=node.action_probs.cpu().numpy()
                         )
-                        action += 1 # adjust for 0 padding
+                        action += 1  # adjust for 0 padding
                     # if add_exploration_noise:
                     #     root.add_exploration_noise(
                     #         dirichlet_alpha=self.config.root_dirichlet_alpha,
@@ -175,24 +177,26 @@ class MCTS:
                     # if action previous unexplored, expand node
                     if action not in node.children:
                         node.children[action] = Node(
-                            parent=node, prior=node.action_probs[action-1]
+                            parent=node, prior=node.action_probs[action - 1]
                         )
                         outputs: DynamicOutputs = agent.dynamics(
                             node.state.to(next(agent.parameters()).device),
-                            torch.as_tensor(action).view(1, 1).to(next(agent.parameters()).device),
+                            torch.as_tensor(action)
+                            .view(1, 1)
+                            .to(next(agent.parameters()).device),
                         )
-                        node.children[action].state_probs = outputs.state_probs.cpu().numpy()[
-                            0
-                        ]
+                        node.children[
+                            action
+                        ].state_probs = outputs.state_probs.cpu().numpy()[0]
                         node.children[action].reward_outcomes = outputs.rewards[0]
                     node: Node = node.children[action]
                     # sample state after
                     state_choice = np.random.choice(
                         len(node.state_probs), p=node.state_probs
-                    ) + 1 # zero padding
+                    )  # zero padding
                     result, reward = (
                         index_result_dict[state_choice],
-                        node.reward_outcomes[state_choice-1],
+                        node.reward_outcomes[state_choice],
                     )
                     # get previous state -> new state
                     next_state = state_transition(
@@ -202,7 +206,7 @@ class MCTS:
                         np.repeat(action, 5),
                     )
                     node.children[state_choice] = Node(
-                        parent=node, prior=node.state_probs[state_choice-1]
+                        parent=node, prior=node.state_probs[state_choice]
                     )
                     node = node.children[state_choice]
                     node.reward = int(reward.item())
