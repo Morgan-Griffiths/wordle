@@ -93,7 +93,9 @@ class NetworkOutput(NamedTuple):
 
 
 class DynamicOutputs:
-    def __init__(self,state_logprobs:torch.Tensor,state_probs:torch.Tensor,rewards:np.array):
+    def __init__(
+        self, state_logprobs: torch.Tensor, state_probs: torch.Tensor, rewards: np.array
+    ):
         self.state_logprobs = state_logprobs
         self.state_probs = state_probs
         self.rewards = rewards
@@ -104,13 +106,13 @@ class DynamicOutputs:
 
     def __next__(self):
         if self.n < 2:
-            return (self.state_logprobs,self.state_probs,self.rewards)[self.n]
+            return (self.state_logprobs, self.state_probs, self.rewards)[self.n]
         else:
             raise StopIteration
 
 
 class PolicyOutputs:
-    def __init__(self,action,logprobs,probs,value):
+    def __init__(self, action, logprobs, probs, value):
         self.action = action
         self.logprobs = logprobs
         self.probs = probs
@@ -122,7 +124,7 @@ class PolicyOutputs:
 
     def __next__(self):
         if self.n < 3:
-            return (self.action,self.logprobs,self.probs,self.value)[self.n]
+            return (self.action, self.logprobs, self.probs, self.value)[self.n]
         else:
             raise StopIteration
 
@@ -158,8 +160,8 @@ with open("data/allowed_words.txt", "r") as f:
 
 with open("data/possible_words.txt", "r") as f:
     word_targets_dictionary = f.readlines()
- 
-permutations = [(0,0,0,0,0)] # zero padded
+
+permutations = []  # zero padded
 for a in range(1, 4):
     for b in range(1, 4):
         for c in range(1, 4):
@@ -178,10 +180,10 @@ dictionary_arr = np.vstack([list(word) for word in dictionary])
 #     "AAHED",
 #     "HELMS",
 # ]
-dictionary_word_to_index = {word: i for i, word in enumerate(dictionary,1)}
-dictionary_index_to_word = {i: word for i, word in enumerate(dictionary,1)}
-dictionary_index_to_word[0] = '-----'
-dictionary_word_to_index['-----'] = 0
+dictionary_word_to_index = {word: i for i, word in enumerate(dictionary, 1)}
+dictionary_index_to_word = {i: word for i, word in enumerate(dictionary, 1)}
+dictionary_index_to_word[0] = "-----"
+dictionary_word_to_index["-----"] = 0
 # print(dictionary)
 alphabet = "".join("-abcdefghijklmnopqrstuvwxzy".upper().split())
 alphabet_dict = {letter: i for i, letter in enumerate(alphabet)}
