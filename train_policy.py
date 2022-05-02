@@ -4,17 +4,19 @@ import torch
 import torch.nn.functional as F
 from torch import optim
 import numpy as np
-from globals import index_result_dict, PolicyOutputs,CHECKPOINT
+from globals import index_result_dict, PolicyOutputs, CHECKPOINT
 from ray_files.replay_buffer import ReplayBuffer
 from experiments.generate_data import load_data
 from experiments.globals import actionSpace, DataTypes, NetworkConfig, dataMapping
 from torch.nn import SmoothL1Loss
 from config import Config
 from main import load_replay_buffer
+from ML.networks import ZeroPolicy
 import copy
 import ray
 
-def test_policy(agent_params, training_params, network_params, per_buffer):
+
+def test_policy(agent_params, training_params, config, per_buffer):
     next_batch = per_buffer.get_batch.remote()
     index_batch, batch = ray.get(next_batch)
     (
@@ -30,7 +32,7 @@ def test_policy(agent_params, training_params, network_params, per_buffer):
     ) = batch
     # print("target_actions", target_actions)
     # print("target_rewards", target_rewards)
-    net = agent_params["network"](network_params)
+    net = ZeroPolicy(config)
     value_criterion = SmoothL1Loss()
     if training_params["resume"]:
         net.load_state_dict(torch.load(training_params["load_path"]))
@@ -45,9 +47,7 @@ def test_policy(agent_params, training_params, network_params, per_buffer):
         # print("outputs.probs", outputs.probs)
         # print("outputs.value", outputs.value)
         policy_loss = F.nll_loss(outputs.logprobs, word_batch)
-        value_loss = value_criterion(
-            outputs.value, reward_batch
-        )
+        value_loss = value_criterion(outputs.value, reward_batch)
         loss = policy_loss + value_loss
         loss.backward()
         optimizer.step()
@@ -60,7 +60,7 @@ def test_policy(agent_params, training_params, network_params, per_buffer):
         sys.stdout.flush()
     print(f"Saving weights to {training_params['load_path']}")
     torch.save(net.state_dict(), training_params["load_path"])
-    validation(net, dataset)
+    validation(net, per_buffer)
     # return np.mean(score_window)
 
 
@@ -80,10 +80,12 @@ def validation(network, per_buffer):
     ) = batch
     while True:
         print(f"Number of states {len(state_batch)}")
-        try:
-            sample_idx = int(input(f"Pick a number between 0-{len(state_batch)}"))
-        except Exception as e:
-            print(e)
+        valid_inputs = [str(i) for i in (range(len(state_batch)))]
+        choice = input(f"Pick a number between 0-{len(state_batch)}")
+        while choice not in valid_inputs:
+            print("invalid input")
+            choice = input(f"Pick a number between 0-{len(state_batch)}")
+        sample_idx = int(choice)
         # sample_idx = np.random.choice(len(states))
         state = state_batch[sample_idx][None, :]
         target_action = word_batch[sample_idx]
@@ -129,6 +131,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "-v", dest="validate", help="validate the trained network", action="store_true"
     )
+    parser.add_argument(
+        "-b",
+        dest="batch_size",
+        help="batch size",
+        type=int,
+        default=4,
+    )
     parser.set_defaults(resume=False)
     parser.set_defaults(validate=False)
 
@@ -157,7 +166,7 @@ if __name__ == "__main__":
         "load_path": network_path,
         "emb_size": 16,
     }
-    config.batch_size = 4
+    config.batch_size = args.batch_size
     buffer_info = load_replay_buffer()
     checkpoint = copy.copy(CHECKPOINT)
     checkpoint["num_played_steps"] = buffer_info["num_played_steps"]
@@ -165,9 +174,9 @@ if __name__ == "__main__":
     checkpoint["num_reanalysed_games"] = buffer_info["num_reanalysed_games"]
     per_buffer = ReplayBuffer.remote(checkpoint, buffer_info["buffer"], config)
     if args.validate:
-        net = agent_params["network"](network_params)
+        net = ZeroPolicy(config)
         net.load_state_dict(torch.load(network_path))
         net.eval()
         validation(net, per_buffer)
     else:
-        test_policy(agent_params, training_params, network_params, per_buffer)
+        test_policy(agent_params, training_params, config, per_buffer)
