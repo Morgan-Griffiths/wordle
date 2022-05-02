@@ -1,7 +1,7 @@
 import torch
 from MCTS_mu import MCTS
 from ML.networks import MuZeroNet
-from ML.utils import strip_module,is_net_ddp
+from ML.utils import strip_module, is_net_ddp
 from globals import (
     DynamicOutputs,
     Embeddings,
@@ -35,8 +35,8 @@ class ValidateModel:
         # device = 'cpu'
         # if torch.cuda.is_available():
         #     device = "cuda:0"
-            # if torch.cuda.device_count() > 1:
-            #     self.model = torch.nn.DataParallel(self.model)
+        # if torch.cuda.device_count() > 1:
+        #     self.model = torch.nn.DataParallel(self.model)
         # self.model.to(device)
         # for name,parameter in self.model.named_parameters():
         #     print(parameter.device)
@@ -105,7 +105,7 @@ class ValidateModel:
                             dtype="int32",
                         )
                         actions = [action for action in root.children.keys()]
-                        action = actions[np.argmax(visit_counts)] + 1
+                        action = actions[np.argmax(visit_counts)]
                         chosen_word = env.action_to_string(action)
                         model_outputs: PolicyOutputs = self.model.policy(
                             torch.tensor(state.copy()).long().unsqueeze(0)
@@ -114,7 +114,17 @@ class ValidateModel:
                             f"model_outputs: {model_outputs.probs[:self.config.action_space]} {model_outputs.value}"
                         )
                         print("chosen_word", chosen_word)
-                        print("highest prob word", env.action_to_string(np.argmax(model_outputs.probs[:self.config.action_space].numpy())))
+                        print(
+                            "highest prob word",
+                            env.action_to_string(
+                                np.argmax(
+                                    model_outputs.probs[
+                                        : self.config.action_space
+                                    ].numpy()
+                                )
+                                + 1
+                            ),
+                        )
                         dynamic_outputs: DynamicOutputs = self.model.dynamics(
                             torch.tensor(state.copy()).long().unsqueeze(0),
                             torch.tensor(action).view(1, 1),
@@ -136,7 +146,7 @@ class ValidateModel:
         except KeyboardInterrupt:
             return
 
-    def validate_mcts(self,env):
+    def validate_mcts(self, env):
         with torch.no_grad():
             rewards = []
             # while True:
@@ -162,7 +172,9 @@ class ValidateModel:
             # import matplotlib.pyplot as plt
             from graphviz import Digraph
         except ModuleNotFoundError:
-            print("Please install networkx to get the MCTS plot.")
+            print(
+                "Please install graphviz to get the MCTS plot. e.g. brew install graphviz (OSX"
+            )
             return None
 
         # graph = nx.Graph()
@@ -170,7 +182,7 @@ class ValidateModel:
         graph.attr("graph", rankdir="LR", splines="true", overlap="false")
         id = 0
 
-        def traverse(node, action, parent_id, best,is_action:bool):
+        def traverse(node, action, parent_id, best, is_action: bool):
             nonlocal id
             node_id = id
             if is_action:
@@ -203,10 +215,12 @@ class ValidateModel:
                         node_id,
                         True
                         if best_visit_count and child.visit_count == best_visit_count
-                        else False,not is_action
+                        else False,
+                        not is_action,
                     )
+
         # nx.to_scipy_sparse_array
-        traverse(root, None, None, True,False)
+        traverse(root, None, None, True, False)
         graph.node(str(0), color="red")
         # nx.draw_networkx(graph,with_labels=True)
         print(graph.source)
