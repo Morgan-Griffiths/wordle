@@ -65,10 +65,10 @@ class Config:
         / datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S")
     )  # Path to TensorBoard logs
 
-    def update_num_sims(self,i):
+    def update_num_sims(self, i):
         if i < self.training_steps * 0.75 and i > self.training_steps * 0.5:
             self.num_simulations = self.max_simulations // 2
-        elif i  > self.training_steps * 0.75:
+        elif i > self.training_steps * 0.75:
             self.num_simulations = self.max_simulations
 
     def visit_softmax_temperature_fn(self, trained_steps):
