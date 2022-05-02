@@ -238,9 +238,9 @@ class StateActionTransition(nn.Module):
     def __init__(self, config):
         super(StateActionTransition, self).__init__()
         self.process_input = Preprocess(config)
-        self.result_emb = nn.Embedding(Tokens.EXACT + 1, 10, padding_idx=0)
+        self.result_emb = nn.Embedding(Tokens.EXACT + 1, Dims.EMBEDDING_SIZE, padding_idx=0)
         self.letter_emb = nn.Embedding(28, Dims.EMBEDDING_SIZE, padding_idx=0)
-        self.col_emb = nn.Embedding(5, 10)
+        self.col_emb = nn.Embedding(5, Dims.EMBEDDING_SIZE)
         self.config = config
         self.action_emb = nn.Embedding(12973, 15)
         # self.history_transformer = CTransformer(
@@ -258,10 +258,10 @@ class StateActionTransition(nn.Module):
         #     seq_length=5,
         #     num_classes=Dims.RESULT_STATE,
         # )
-        # self.result_compute = mlp(300,[128,128],32)
-        # self.output_layer = mlp(288,[256,256],Dims.RESULT_STATE)
+        self.result_compute = mlp(488,[256,128],32)
+        self.output_layer = mlp(160,[256,256],Dims.RESULT_STATE)
         self.transformer = CTransformer(
-            15, heads=15, depth=10, seq_length=7, num_classes=Dims.RESULT_STATE
+            15, heads=15, depth=15, seq_length=7, num_classes=Dims.RESULT_STATE
         )
 
     def get_weights(self):
@@ -275,13 +275,63 @@ class StateActionTransition(nn.Module):
         device = state.get_device()
         if device == -1:
             device = "cpu"
-        # state_letters = state[:,:,:,Embeddings.LETTER] # (B,6,5)
-        # state_results = state[:,:,:,Embeddings.RESULT] # (B,6,5)
+        cols = torch.arange(0, 5).to(device).repeat(B).reshape(B, 5)
+        col_embs = self.col_emb(cols) # (5,emb)
+        matrix_cols = torch.arange(0, 5).repeat(6).reshape(6, 5).to(device)
+        matrix_col_embs = self.col_emb(matrix_cols) # (B,6,5,emb)
+        state_letters = state[:,:,:,Embeddings.LETTER] # (B,6,5)
+        state_results = state[:,:,:,Embeddings.RESULT] # (B,6,5)
         # # previous_actions = state[:,:,0,Embeddings.WORD] # (B,1)
-        # action_letters = torch.tensor(np.stack([np.array([alphabet_dict[letter] for letter in self.config.index_to_word[a.item()]]) for a in action])).to(device) # (B,5)
-        # cols = torch.arange(0, 5).repeat(6).reshape(6, 5).to(device)
-
-        # col_embs = self.col_emb(cols) # (6,5,emb)
+        action_letters = torch.tensor(np.stack([np.array([alphabet_dict[letter] for letter in self.config.index_to_word[a.item()]]) for a in action])).to(device) # (B,5)
+        batch_outputs = []
+        for i in range(5):
+            outputs = []
+            for j in range(B):
+                batch_letters = state_letters[j]
+                batch_results = state_results[j]
+                letter_1 = action_letters[j,i] # (1)
+                assert batch_letters.shape == (6,5)
+                assert batch_results.shape == (6,5)
+                # assert letter_1.shape == torch.Size([1])
+                # assert letter_1.shape == torch.Size(B)
+                letter_mask = torch.where(batch_results == letter_1) #
+                not_letter_mask = torch.where(batch_results != letter_1) #
+                hot1 = torch.zeros_like(batch_results)
+                hot1[letter_mask] = 1
+                not_hot = torch.zeros_like(batch_results)
+                not_hot[not_letter_mask] = 1
+                assert hot1.shape == (6,5),f'expect (6,5) got {hot1.shape}'
+                assert not_hot.shape == (6,5),f'expect (6,5) got {not_hot.shape}'
+                # assert state_results.shape == letter_mask.shape
+                temp = batch_results * hot1
+                assert temp.shape == (6,5),f'expect (6,5) got {temp.shape}'
+                temp2 = batch_results * not_hot
+                assert temp2.shape == (6,5),f'expect (6,5) got {temp2.shape}'
+                relevant_results = self.result_emb(temp) + matrix_col_embs # (6,5,8)
+                outside_results = self.result_emb(temp2) + matrix_col_embs # (6,5,8)
+                assert relevant_results.shape == (6,5,8),f'expect (6,5,8) got {relevant_results.shape}'
+                assert outside_results.shape == (6,5,8),f'expect (6,5,8) got {outside_results.shape}'
+                # print(col_embs.shape)
+                # print(self.letter_emb(letter_1).shape)
+                # assert self.letter_emb(letter_1).shape == torch.Size((Dims.EMBEDDING_SIZE))
+                aletter_emb = self.letter_emb(letter_1) + col_embs[j,i,:] # (emb)
+                assert aletter_emb.shape == torch.Size([Dims.EMBEDDING_SIZE]),f'expect (emb) got {aletter_emb.shape}'
+                ares = torch.cat((aletter_emb,relevant_results.view(-1),outside_results.view(-1)),dim=-1) # emb + 6*5*emb * 2 = 510 if emb = 8
+                assert ares.shape == torch.Size([488]),f'expect (B,160) got {ares.shape}'
+                outputs.append(self.result_compute(ares))
+            batch_outputs.append(torch.stack(outputs,dim=-1)) # (160)
+        output_res = torch.stack(batch_outputs,dim=0)
+        if output_res.dim() == 2:
+            output_res = output_res.unsqueeze(1)
+        assert output_res.shape == (5,32,B),f'expect (5,B,32) got {output_res.shape} B {B}'
+        output_res = output_res.permute(2,0,1).contiguous().view(B,-1)
+        assert output_res.shape == (B,160),f'expect (B,160) got {output_res.shape} B {B}'
+        x = self.output_layer(output_res)
+        # sl_emb = self.letter_emb(state_letters)  # (B,6,5,10)
+        # al_emb = self.letter_emb(action_letters)  # (B,5,10)
+        # norm_action = action_letters / torch.sqrt(action_letters.pow(2))
+        # norm_letters = state_letters / torch.sqrt(state_letters.pow(2))
+        # similarity = torch.bmm(norm_letters, norm_action.view(B, 5, 1))
         # result_attention = compute_batch(state_letters,action_letters,state_results,B,device,self.result_emb,col_embs) # (B,5,6,5,emb) ([512, 5, 512, 6, 5, 10]) ([1, 5, 1, 6, 5, 10])
         # print('result_attention',result_attention.shape)
         # assert result_attention.shape == (B,5,6,5,10), f"Expected (B,5,6,5,10) {result_attention.shape}"
@@ -292,13 +342,13 @@ class StateActionTransition(nn.Module):
         # result_embs = result_embs.view(B,5,-1)
         # letter_embs = self.letter_emb(action_letters)
         # state_input = state[:,:,:,:2].contiguous().view(B, 6, -1) # (B,6,10)
-        x = self.process_input(state)
-        a = self.action_emb(action)
-        if a.dim() == 2:
-            a = a.unsqueeze(1)
+        # x = self.process_input(state)
+        # a = self.action_emb(action)
+        # if a.dim() == 2:
+        #     a = a.unsqueeze(1)
         # # print(result_embs.shape,state_input.shape,action_letters.shape,a.shape)
-        x = torch.cat((state.view(B, 6, -1), a), dim=1)
-        x = self.transformer(x)  # (B,128)
+        # x = torch.cat((state.view(B, 6, -1), a), dim=1)
+        # x = self.transformer(x)  # (B,128)
         # print('x.shape',x.shape)
         # x = torch.cat((x,computed_result),dim=-1)
         # x = self.output_layer(x)
