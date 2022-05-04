@@ -36,7 +36,7 @@ def test_policy(agent_params, training_params, config, per_buffer):
     value_criterion = SmoothL1Loss()
     if training_params["resume"]:
         net.load_state_dict(torch.load(training_params["load_path"]))
-    optimizer = optim.Adam(net.parameters(), lr=agent_params["learning_rate"])
+    optimizer = optim.AdamW(net.parameters(), lr=agent_params["learning_rate"])
     criterion = training_params["criterion"](reduction="sum")
     scores = []
     score_window = deque(maxlen=100)
