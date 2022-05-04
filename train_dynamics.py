@@ -20,10 +20,11 @@ from collections import Counter
 import torch.nn.functional as F
 from main import MuZero, load_replay_buffer
 from ray_files.replay_buffer import ReplayBuffer
+from wordle import Wordle
 
 
 def test_state_transition(net, training_params, agent_params, per_buffer):
-    optimizer = optim.Adam(
+    optimizer = optim.AdamW(
         net.parameters(), lr=agent_params["learning_rate"], weight_decay=3e-2
     )
     scores = []
@@ -138,6 +139,10 @@ if __name__ == "__main__":
     checkpoint["num_reanalysed_games"] = buffer_info["num_reanalysed_games"]
     per_buffer = ReplayBuffer.remote(checkpoint, buffer_info["buffer"], config)
     # mu_zero = MuZeroNet(config)
+
+    env = Wordle(word_restriction=config.action_space)
+    config.word_to_index = env.dictionary_word_to_index
+    config.index_to_word = env.dictionary_index_to_word
     mu_zero = StateActionTransition(config)
 
     network_path = "weights/dynamics"
