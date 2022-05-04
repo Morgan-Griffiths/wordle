@@ -11,9 +11,12 @@ class Config:
     tau = 0.01
     eps = 0.5
     SGD_epoch = 4
-    L2 = 0.1
     update_every = 4
     learning_update = 0
+    # Optimizer
+    beta_1 = 0.9
+    beta_2 = 0.95
+    L2 = 0.1
     # WORDLE
     word_to_index = {}
     index_to_word = {}
@@ -37,7 +40,7 @@ class Config:
     pb_c_init = 1.25
     root_exploration_fraction = 0.25
     root_dirichlet_alpha = 0.25
-    num_simulations = 5
+    num_simulations = 25
     max_simulations = 50
     revisit_policy_search_rate = 0
     self_play_delay = 0  # Number of seconds to wait after each played game
