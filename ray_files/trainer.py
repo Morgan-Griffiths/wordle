@@ -25,15 +25,16 @@ class Trainer:
         if self.config.train_on_gpu:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         else:
-            self.device = 'cpu'
+            self.device = "cpu"
         # Initialize the network
         self.model = MuZeroNet(config)
         self.model.set_weights(copy.deepcopy(initial_checkpoint["weights"]))
         self.model.to(self.device)
         self.model.train()
         self.training_step = initial_checkpoint["training_step"]
-        self.optimizer = torch.optim.Adam(
+        self.optimizer = torch.optim.AdamW(
             self.model.parameters(),
+            betas=(config.beta_1, config.beta_2),
             lr=self.config.lr_init,
             weight_decay=self.config.weight_decay,
         )
@@ -127,12 +128,12 @@ class Trainer:
         assert action_batch.dim() == 1
 
         device = next(self.model.parameters()).device
-        state_batch = state_batch.to(device) 
-        action_batch = action_batch.to(device) 
-        value_batch = value_batch.to(device) 
-        reward_batch = reward_batch.to(device) 
+        state_batch = state_batch.to(device)
+        action_batch = action_batch.to(device)
+        value_batch = value_batch.to(device)
+        reward_batch = reward_batch.to(device)
         policy_batch = policy_batch.to(device)
-        result_batch = result_batch.to(device) 
+        result_batch = result_batch.to(device)
         word_batch = word_batch.to(device)
 
         if self.config.PER:
@@ -146,7 +147,11 @@ class Trainer:
         policy_outputs: PolicyOutputs = self.model.policy(state_batch)
         # policy_loss = F.nll_loss(policy_outputs.logprobs, word_batch, reduction="none")
         # policy_loss = (-policy_batch * policy_outputs.logprobs).sum(1)
-        policy_loss = F.kl_div(policy_outputs.logprobs,policy_batch,reduction="none").sum(dim=1).unsqueeze(1)
+        policy_loss = (
+            F.kl_div(policy_outputs.logprobs, policy_batch, reduction="none")
+            .sum(dim=1)
+            .unsqueeze(1)
+        )
         value_loss = F.smooth_l1_loss(
             reward_batch, policy_outputs.value, reduction="none"
         )
@@ -154,7 +159,7 @@ class Trainer:
 
         if self.config.PER:
             # Correct PER bias by using importance-sampling (IS) weights
-            actor_loss *= weight_batch[:,None]
+            actor_loss *= weight_batch[:, None]
         loss = actor_loss.sum() + dynamic_loss
         self.optimizer.zero_grad()
         # loss = loss.mean()
