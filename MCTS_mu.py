@@ -159,7 +159,7 @@ class MCTS:
                     #     # ucb pick
                     #     action, node = node.select_child(self.config)
                     # else:
-                    if add_exploration_noise:
+                    if self.config.add_exploration_noise:
                         root.add_exploration_noise(
                             dirichlet_alpha=self.config.root_dirichlet_alpha,
                             exploration_fraction=self.config.root_exploration_fraction,
