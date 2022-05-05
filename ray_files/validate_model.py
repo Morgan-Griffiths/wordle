@@ -23,6 +23,7 @@ class ValidateModel:
 
     def __init__(self, checkpoint, config):
         self.config = config
+        self.config.add_exploration_noise = False
         self.config.train_on_gpu = False
         # Initialize the network
         self.model = MuZeroNet(self.config)
@@ -151,17 +152,28 @@ class ValidateModel:
             rewards = []
             # while True:
             state, reward, done = env.reset()
-            print(env.visualize_state())
-            model_outputs: PolicyOutputs = self.model.policy(
-                torch.tensor(state.copy()).long().unsqueeze(0)
-            )
-            # while not done:
-            root, mcts_info = MCTS(self.config).run(
-                self.model,
-                state,
-                reward,
-            )
-            self.plot_mcts(root)
+            while True:
+                print(env.visualize_state())
+                model_outputs: PolicyOutputs = self.model.policy(
+                    torch.tensor(state.copy()).long().unsqueeze(0)
+                )
+                # while not done:
+                root, mcts_info = MCTS(self.config).run(
+                    self.model,
+                    state,
+                    reward,
+                )
+                self.plot_mcts(root)
+                input(f"press ENTER to continue, or ctrl c to quit")
+
+                visit_counts = np.array(
+                    [child.visit_count for child in root.children.values()],
+                    dtype="int32",
+                )
+                actions = [action for action in root.children.keys()]
+                action = actions[np.argmax(visit_counts)]
+                chosen_word = env.action_to_string(action)
+                state, reward, done = env.step(chosen_word)
 
     def plot_mcts(self, root, plot=True):
         """
@@ -223,7 +235,7 @@ class ValidateModel:
         traverse(root, None, None, True, False)
         graph.node(str(0), color="red")
         # nx.draw_networkx(graph,with_labels=True)
-        print(graph.source)
+        # print(graph.source)
         graph.render("mcts", view=plot, cleanup=True, format="pdf")
         # plt.savefig("filename.png",bbox_inches='tight')
         # plt.close()
