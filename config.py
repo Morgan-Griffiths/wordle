@@ -21,7 +21,7 @@ class Config:
     word_to_index = {}
     index_to_word = {}
     # PER BUFFER
-    batch_size = 512
+    batch_size = 4096
     num_unroll_steps = 6
     replay_buffer_size = 10000
     PER_alpha = 0.1
@@ -38,13 +38,14 @@ class Config:
     lr_decay_rate = 0.999
     pb_c_base = 19652
     pb_c_init = 1.25
+    add_exploration_noise = True
     root_exploration_fraction = 0.25
     root_dirichlet_alpha = 0.25
-    num_simulations = 25
+    num_simulations = 5
     max_simulations = 50
     revisit_policy_search_rate = 0
     self_play_delay = 0  # Number of seconds to wait after each played game
-    training_delay = 0  # Number of seconds to wait after each training step
+    training_delay = 0.1  # Number of seconds to wait after each training step
     ratio = None  # Desired training steps per self played step ratio. Equivalent to a synchronous version, training can take much longer. Set it to None to disable it
     temperature_threshold = None  # Number of moves before dropping the temperature given by visit_softmax_temperature_fn to 0 (ie selecting the best action). If None, visit_softmax_temperature_fn is used every time
     num_workers = 2  # Number of simultaneous threads/workers self-playing to feed the replay buffer

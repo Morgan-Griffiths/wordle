@@ -594,6 +594,14 @@ if __name__ == "__main__":
         help="training epochs",
     )
     parser.add_argument(
+        "--sims",
+        "-s",
+        dest="sims",
+        default=5,
+        type=int,
+        help="number of times to search the MCTS tree",
+    )
+    parser.add_argument(
         "--no_gpu",
         dest="no_gpu",
         default=False,
@@ -606,6 +614,7 @@ if __name__ == "__main__":
     config = Config()
     config.train_on_gpu = not args.no_gpu
     config.training_steps = args.epochs
+    config.num_simulations = args.sims
     mu_zero = MuZero(config)
 
     while True:

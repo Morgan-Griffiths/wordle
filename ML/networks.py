@@ -108,19 +108,20 @@ class Preprocess(nn.Module):
         # print(state)
         res = self.result_emb(state[:, :, :, Embeddings.RESULT])
         letter = self.letter_emb(state[:, :, :, Embeddings.LETTER])
-        word = self.action_emb(state[:, :, 0, Embeddings.WORD])
-        rows = torch.arange(0, 6).repeat(B, 5).reshape(B, 5, 6).permute(0, 2, 1)
+        # word = self.action_emb(state[:, :, 0, Embeddings.WORD])
+        # rows = torch.arange(0, 6).repeat(B, 5).reshape(B, 5, 6).permute(0, 2, 1)
         cols = torch.arange(0, 5).repeat(B, 6).reshape(B, 6, 5)
-        row_embs = self.row_emb(rows.to(device))
+        # row_embs = self.row_emb(rows.to(device))
         col_embs = self.col_emb(cols.to(device))
-        positional_embs = row_embs + col_embs
+        # positional_embs = row_embs + col_embs
         # 1, 9, 6, 2, 8
         # [1, 6, 5, 8]
-        x = res + letter + positional_embs
-        y = (word + row_embs[:, :, 0]).unsqueeze(-2)
+        x = res + letter + col_embs
+        x = rearrange(x,'b t h s -> b (t h) s')
+        # y = (word + row_embs[:, :, 0]).unsqueeze(-2)
         # y.shape = (B,6,1,8)
         # x.shape = (B,6,5,8)
-        x = torch.cat((x, y), dim=-2)
+        # x = torch.cat((x, y), dim=-2)
         # word = self.word_emb(state[:, :, 0, Embeddings.WORD].unsqueeze(-1))
         # x = torch.cat((x, word), dim=-2)
         return x
@@ -306,27 +307,29 @@ class ZeroPolicy(nn.Module):
         super(ZeroPolicy, self).__init__()
         self.seed = torch.manual_seed(1234)
         self.process_input = Preprocess(config)
-        self.transformer = CTransformer(
-            48,
-            heads=8,
-            depth=5,
-            seq_length=6,
-            num_classes=Dims.OUTPUT,
-        )
+        # self.transformer = CTransformer(
+        #     48,
+        #     heads=8,
+        #     depth=5,
+        #     seq_length=6,
+        #     num_classes=Dims.OUTPUT,
+        # )
+        self.output_layer = mlp(240, [256, 256, 256], 256)
         # the part for actions
-        self.fc_action1 = nn.Linear(Dims.TRANSFORMER_OUTPUT, 256)
+        self.fc_action1 = nn.Linear(256, 256)
         self.fc_action2 = nn.Linear(256, config.action_space)
 
         # the part for the value function
-        self.value_output = nn.Linear(Dims.TRANSFORMER_OUTPUT, 1)
+        self.value_output = nn.Linear(256, 1)
         self.advantage_output = nn.Linear(256, config.action_space)
 
     def forward(self, state: torch.LongTensor):
         # B,26
         B = state.shape[0]
-        x = self.process_input(state).view(B, 6, -1)
-        # [B, 6, 40]
-        x = self.transformer(x)
+        x = self.process_input(state).view(B,-1)
+        # [B, 240]
+        # x = self.transformer(x)
+        x = self.output_layer(x)
         # [B, 500]
         # action head
         act = self.fc_action2(F.leaky_relu(self.fc_action1(x)))

@@ -61,8 +61,19 @@ class ReplayBuffer:
             del self.buffer[del_id]
 
         if shared_storage:
-            shared_storage.set_info.remote("num_played_games", self.num_played_games)
-            shared_storage.set_info.remote("num_played_steps", self.num_played_steps)
+
+            shared_storage.set_info.remote(
+                {
+                    "episode_length": len(game_history.action_history) - 1,
+                    "actions": np.array(game_history.max_actions),
+                    "total_reward": sum(game_history.reward_history),
+                    "mean_value": np.mean(
+                        [value for value in game_history.root_values if value]
+                    ),
+                    "num_played_games": self.num_played_games,
+                    "num_played_steps": self.num_played_steps
+                }
+            )
 
     def get_buffer(self):
         return self.buffer
