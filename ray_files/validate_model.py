@@ -147,6 +147,7 @@ class ValidateModel:
             return
 
     def validate_mcts(self, env):
+        self.config.num_simulations = 50
         with torch.no_grad():
             rewards = []
             # while True:
