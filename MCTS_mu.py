@@ -159,21 +159,27 @@ class MCTS:
                     #     # ucb pick
                     #     action, node = node.select_child(self.config)
                     # else:
+                    if add_exploration_noise:
+                        root.add_exploration_noise(
+                            dirichlet_alpha=self.config.root_dirichlet_alpha,
+                            exploration_fraction=self.config.root_exploration_fraction,
+                        )
                     if node.expanded() and np.random.random() < self.epsilon:
                         # random action
-                        # action = np.random.randint(self.config.action_space)
-                        action, _ = node.select_child(self.config)
+                        action = np.random.randint(self.config.action_space)
+                        # action, _ = node.select_child(self.config)
+                        # inverse_probs = node.action_probs.cpu().numpy()
+                        # inverse_probs = np.ones_like(inverse_probs) - inverse_probs
+                        # inverse_probs = inverse_probs / np.sum(inverse_probs)
+                        # action = np.random.choice(
+                        #     len(node.action_probs), p=inverse_probs
+                        # )
                     else:
                         # network picks
                         action = np.random.choice(
                             len(node.action_probs), p=node.action_probs.cpu().numpy()
                         )
-                        action += 1  # adjust for 0 padding
-                    # if add_exploration_noise:
-                    #     root.add_exploration_noise(
-                    #         dirichlet_alpha=self.config.root_dirichlet_alpha,
-                    #         exploration_fraction=self.config.root_exploration_fraction,
-                    #     )
+                    action += 1  # adjust for 0 padding
                     # if action previous unexplored, expand node
                     if action not in node.children:
                         node.children[action] = Node(
