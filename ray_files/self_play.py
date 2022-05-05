@@ -195,6 +195,7 @@ class SelfPlay:
                 )
                 replay_buffer.save_game.remote(game_history, shared_storage)
 
+
             else:
                 # Take the best action (no exploration) in test mode
                 game_history = self.play_game(
