@@ -143,6 +143,7 @@ class ValidateModel:
                         input(f"press ENTER to continue, or ctrl c to quit")
                         if done:
                             rewards.append(reward)
+                    
                     print(f"total_reward {rewards}")
 
         except KeyboardInterrupt:
@@ -174,6 +175,7 @@ class ValidateModel:
                     action = actions[np.argmax(visit_counts)]
                     chosen_word = env.action_to_string(action)
                     state, reward, done = env.step(chosen_word)
+                print(env.visualize_state())
 
     def plot_mcts(self, root, plot=True):
         """
