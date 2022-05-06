@@ -46,7 +46,7 @@ def test_policy(agent_params, training_params, config, per_buffer):
         outputs: PolicyOutputs = net(state_batch)
         # print("outputs.probs", outputs.probs)
         # print("outputs.value", outputs.value)
-        policy_loss = F.nll_loss(outputs.logprobs, word_batch)
+        policy_loss = F.nll_loss(outputs.logprobs, word_batch-1)
         value_loss = value_criterion(outputs.value, reward_batch)
         loss = policy_loss + value_loss
         loss.backward()
