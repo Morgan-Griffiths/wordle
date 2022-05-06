@@ -139,7 +139,7 @@ class SelfPlay:
         if self.config.train_on_gpu:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         else:
-            self.device = 'cpu'
+            self.device = "cpu"
         # Initialize the network
         self.model = MuZeroNet(config)
         self.model.set_weights(copy.deepcopy(initial_checkpoint["weights"]))
@@ -180,7 +180,9 @@ class SelfPlay:
         ) < self.config.training_steps and not ray.get(
             shared_storage.get_info.remote("terminate")
         ):
-            self.config.update_num_sims(ray.get(shared_storage.get_info.remote("training_step")))
+            self.config.update_num_sims(
+                ray.get(shared_storage.get_info.remote("training_step"))
+            )
             self.model.set_weights(ray.get(shared_storage.get_info.remote("weights")))
 
             if not test_mode:
@@ -194,7 +196,6 @@ class SelfPlay:
                     False,
                 )
                 replay_buffer.save_game.remote(game_history, shared_storage)
-
 
             else:
                 # Take the best action (no exploration) in test mode
@@ -244,9 +245,7 @@ class SelfPlay:
         with torch.no_grad():
             while not done:
                 root, mcts_info = MCTS(self.config).run(
-                    self.model,
-                    state,
-                    reward,
+                    self.model, state, reward, self.env.turn
                 )
                 # get chosen action
                 action = self.select_action(

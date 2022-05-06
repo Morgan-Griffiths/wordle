@@ -45,7 +45,7 @@ class Config:
     max_simulations = 50
     revisit_policy_search_rate = 0
     self_play_delay = 0  # Number of seconds to wait after each played game
-    training_delay = 0.1  # Number of seconds to wait after each training step
+    training_delay = 0  # Number of seconds to wait after each training step
     ratio = None  # Desired training steps per self played step ratio. Equivalent to a synchronous version, training can take much longer. Set it to None to disable it
     temperature_threshold = None  # Number of moves before dropping the temperature given by visit_softmax_temperature_fn to 0 (ie selecting the best action). If None, visit_softmax_temperature_fn is used every time
     num_workers = 2  # Number of simultaneous threads/workers self-playing to feed the replay buffer

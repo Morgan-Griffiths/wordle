@@ -597,7 +597,7 @@ if __name__ == "__main__":
         "--sims",
         "-s",
         dest="sims",
-        default=5,
+        default=20,
         type=int,
         help="number of times to search the MCTS tree",
     )
