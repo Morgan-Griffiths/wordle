@@ -100,6 +100,7 @@ class ValidateModel:
                             self.model,
                             state,
                             reward,
+                            env.turn,
                         )
                         visit_counts = np.array(
                             [child.visit_count for child in root.children.values()],
@@ -148,33 +149,31 @@ class ValidateModel:
             return
 
     def validate_mcts(self, env):
-        self.config.num_simulations = 50
         with torch.no_grad():
-            rewards = []
-            # while True:
-            state, reward, done = env.reset()
             while True:
-                print(env.visualize_state())
-                model_outputs: PolicyOutputs = self.model.policy(
-                    torch.tensor(state.copy()).long().unsqueeze(0)
-                )
-                # while not done:
-                root, mcts_info = MCTS(self.config).run(
-                    self.model,
-                    state,
-                    reward,
-                )
-                self.plot_mcts(root)
-                input(f"press ENTER to continue, or ctrl c to quit")
+                rewards = []
+                # while True:
+                state, reward, done = env.reset()
+                while not done:
+                    print(env.visualize_state())
+                    model_outputs: PolicyOutputs = self.model.policy(
+                        torch.tensor(state.copy()).long().unsqueeze(0)
+                    )
+                    # while not done:
+                    root, mcts_info = MCTS(self.config).run(
+                        self.model, state, reward, env.turn
+                    )
+                    self.plot_mcts(root)
+                    input(f"press ENTER to continue, or ctrl c to quit")
 
-                visit_counts = np.array(
-                    [child.visit_count for child in root.children.values()],
-                    dtype="int32",
-                )
-                actions = [action for action in root.children.keys()]
-                action = actions[np.argmax(visit_counts)]
-                chosen_word = env.action_to_string(action)
-                state, reward, done = env.step(chosen_word)
+                    visit_counts = np.array(
+                        [child.visit_count for child in root.children.values()],
+                        dtype="int32",
+                    )
+                    actions = [action for action in root.children.keys()]
+                    action = actions[np.argmax(visit_counts)]
+                    chosen_word = env.action_to_string(action)
+                    state, reward, done = env.step(chosen_word)
 
     def plot_mcts(self, root, plot=True):
         """
