@@ -136,18 +136,28 @@ class MCTS:
     def __init__(self, config) -> None:
         self.config = config
         self.epsilon = config.epsilon
+        # self.nodes_per_turn = {
+        #     0:100
+        #     1:300
+        #     2:5000
+        #     3:self.config.action_space
+        #     4:self.config.action_space
+        #     5:self.config.action_space
+        # }
+        # self.node_policy_random_split = 0.75
 
     def decay_epsilon(self):
         self.epsilon = max(0, self.epsilon * 0.999)
 
-    def run(self, agent: MuZeroNet, state, reward):
+    def run(self, agent: MuZeroNet, state, reward, turn):
         root = create_root(state, reward)
         max_tree_depth = 0
         for _ in range(self.config.num_simulations):
             with torch.no_grad():
                 current_tree_depth = 0
                 node: Node = root
-                while node.reward not in [1, -1]:
+                reward = 0
+                while reward not in [1, -1]:
                     if node.action_probs is None:
                         outputs: PolicyOutputs = agent.policy(
                             node.state.to(next(agent.parameters()).device)
@@ -211,9 +221,10 @@ class MCTS:
                         np.array(result),
                         np.repeat(action, 5),
                     )
-                    node.children[state_choice] = Node(
-                        parent=node, prior=node.state_probs[state_choice]
-                    )
+                    if state_choice not in node.children:
+                        node.children[state_choice] = Node(
+                            parent=node, prior=node.state_probs[state_choice]
+                        )
                     node = node.children[state_choice]
                     node.reward = int(reward.item())
                     node.state = torch.as_tensor(next_state).long()
