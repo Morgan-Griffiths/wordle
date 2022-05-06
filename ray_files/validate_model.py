@@ -157,9 +157,9 @@ class ValidateModel:
                 state, reward, done = env.reset()
                 while not done:
                     print(env.visualize_state())
-                    model_outputs: PolicyOutputs = self.model.policy(
-                        torch.tensor(state.copy()).long().unsqueeze(0)
-                    )
+                    # model_outputs: PolicyOutputs = self.model.policy(
+                    #     torch.tensor(state.copy()).long().unsqueeze(0)
+                    # )
                     # while not done:
                     root, mcts_info = MCTS(self.config).run(
                         self.model, state, reward, env.turn
