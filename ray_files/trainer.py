@@ -134,7 +134,7 @@ class Trainer:
         reward_batch = reward_batch.to(device)
         policy_batch = policy_batch.to(device)
         result_batch = result_batch.to(device)
-        word_batch = word_batch.to(device)
+        word_batch = word_batch.to(device) - 1
 
         if self.config.PER:
             weight_batch = torch.tensor(weight_batch.copy()).float().to(device)
