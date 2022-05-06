@@ -59,15 +59,13 @@ class Node:
             return 0
         return self.value_sum / self.visit_count
 
-    def expand(self, actions: int, network_outputs: NetworkOutput):
-        self.state = network_outputs.state
-        self.reward = network_outputs.reward
-        policy = {
-            a: math.exp(network_outputs.policy_logits[0][a]) for a in range(actions)
-        }
-        policy_sum = sum(policy.values())
-        for action, p in policy.items():
-            self.children[action] = Node(p / policy_sum)
+    def expand(self, turn: int, action_space: int, action_probs: np.array):
+        indicies = np.arange(action_space)
+        actions = np.arange(action_space) + 1
+        action_probs = action_probs[indicies]
+        policy_sum = sum(action_probs)
+        for action, idx in zip(actions, indicies):
+            self.children[action] = Node(self, action_probs[idx] / policy_sum)
 
     def expand_state(self, states: int, network_outputs: NetworkOutput):
         self.reward = network_outputs.reward
@@ -136,76 +134,94 @@ class MCTS:
     def __init__(self, config) -> None:
         self.config = config
         self.epsilon = config.epsilon
-        # self.nodes_per_turn = {
-        #     0:100
-        #     1:300
-        #     2:5000
-        #     3:self.config.action_space
-        #     4:self.config.action_space
-        #     5:self.config.action_space
-        # }
-        # self.node_policy_random_split = 0.75
+        self.nodes_per_turn = {
+            0: self.config.action_space,
+            1: self.config.action_space,
+            2: self.config.action_space,
+            3: self.config.action_space,
+            4: self.config.action_space,
+            5: self.config.action_space,
+        }
+        self.node_policy_random_split = 0.75
 
     def decay_epsilon(self):
         self.epsilon = max(0, self.epsilon * 0.999)
 
     def run(self, agent: MuZeroNet, state, reward, turn):
-        root = create_root(state, reward)
-        max_tree_depth = 0
-        for _ in range(self.config.num_simulations):
-            with torch.no_grad():
+        with torch.no_grad():
+            root = create_root(state, reward)
+            outputs: PolicyOutputs = agent.policy(
+                root.state.to(next(agent.parameters()).device)
+            )
+            root.expand(turn, self.config.action_space, outputs.probs.cpu().numpy()[0])
+            max_tree_depth = 0
+            for _ in range(self.config.num_simulations):
                 current_tree_depth = 0
                 node: Node = root
                 reward = 0
+                sim_turn = 1
                 while reward not in [1, -1]:
                     if node.action_probs is None:
                         outputs: PolicyOutputs = agent.policy(
                             node.state.to(next(agent.parameters()).device)
                         )
                         node.action_probs = outputs.probs[0]
-                    # pick action
-                    # print(len(node.children), node.expanded())
-                    # if len(node.children) == self.config.ubc_start:
-                    #     # ucb pick
-                    #     action, node = node.select_child(self.config)
-                    # else:
+                    if not node.expanded():
+                        node.expand(
+                            turn + sim_turn, self.config.action_space, node.action_probs
+                        )
                     if self.config.add_exploration_noise:
                         root.add_exploration_noise(
                             dirichlet_alpha=self.config.root_dirichlet_alpha,
                             exploration_fraction=self.config.root_exploration_fraction,
                         )
-                    if node.expanded() and np.random.random() < self.epsilon:
-                        # random action
-                        action = np.random.randint(self.config.action_space)
-                        # action, _ = node.select_child(self.config)
-                        # inverse_probs = node.action_probs.cpu().numpy()
-                        # inverse_probs = np.ones_like(inverse_probs) - inverse_probs
-                        # inverse_probs = inverse_probs / np.sum(inverse_probs)
-                        # action = np.random.choice(
-                        #     len(node.action_probs), p=inverse_probs
-                        # )
-                    else:
-                        # network picks
-                        action = np.random.choice(
-                            len(node.action_probs), p=node.action_probs.cpu().numpy()
-                        )
-                    action += 1  # adjust for 0 padding
+                    # pick action
+                    # print(len(node.children), node.expanded())
+                    # if len(node.children) == self.config.ubc_start:
+                    #     # ucb pick
+                    action, node = node.select_child(self.config)
+
+                    # if node.expanded() and np.random.random() < self.epsilon:
+                    #     # random action
+                    #     action = np.random.randint(self.config.action_space)
+                    #     # action, _ = node.select_child(self.config)
+                    #     # inverse_probs = node.action_probs.cpu().numpy()
+                    #     # inverse_probs = np.ones_like(inverse_probs) - inverse_probs
+                    #     # inverse_probs = inverse_probs / np.sum(inverse_probs)
+                    #     # action = np.random.choice(
+                    #     #     len(node.action_probs), p=inverse_probs
+                    #     # )
+                    # else:
+                    #     # network picks
+                    #     action = np.random.choice(
+                    #         len(node.action_probs), p=node.action_probs.cpu().numpy()
+                    #     )
+                    # action += 1  # adjust for 0 padding
                     # if action previous unexplored, expand node
-                    if action not in node.children:
-                        node.children[action] = Node(
-                            parent=node, prior=node.action_probs[action - 1]
-                        )
+                    # if action not in node.children:
+                    #     node.children[action] = Node(
+                    #         parent=node, prior=node.action_probs[action - 1]
+                    #     )
+                    #     outputs: DynamicOutputs = agent.dynamics(
+                    #         node.state.to(next(agent.parameters()).device),
+                    #         torch.as_tensor(action)
+                    #         .view(1, 1)
+                    #         .to(next(agent.parameters()).device),
+                    #     )
+                    #     node.children[
+                    #         action
+                    #     ].state_probs = outputs.state_probs.cpu().numpy()[0]
+                    #     node.children[action].reward_outcomes = outputs.rewards[0]
+                    # node: Node = node.children[action]
+                    if node.state_probs is None:
                         outputs: DynamicOutputs = agent.dynamics(
-                            node.state.to(next(agent.parameters()).device),
+                            node.parent.state.to(next(agent.parameters()).device),
                             torch.as_tensor(action)
                             .view(1, 1)
                             .to(next(agent.parameters()).device),
                         )
-                        node.children[
-                            action
-                        ].state_probs = outputs.state_probs.cpu().numpy()[0]
-                        node.children[action].reward_outcomes = outputs.rewards[0]
-                    node: Node = node.children[action]
+                        node.state_probs = outputs.state_probs.cpu().numpy()[0]
+                        node.reward_outcomes = outputs.rewards[0]
                     # sample state after
                     state_choice = np.random.choice(
                         len(node.state_probs), p=node.state_probs
@@ -229,14 +245,15 @@ class MCTS:
                     node.reward = int(reward.item())
                     node.state = torch.as_tensor(next_state).long()
                     current_tree_depth += 1
+                    sim_turn += 1
                 max_tree_depth = max(max_tree_depth, current_tree_depth)
                 outputs: PolicyOutputs = agent.policy(node.state)
                 node.backprop(outputs.value.item(), self.config)
-        extra_info = {
-            "max_tree_depth": max_tree_depth,
-            "root_predicted_value": root.value,
-        }
-        # self.decay_epsilon()
+            extra_info = {
+                "max_tree_depth": max_tree_depth,
+                "root_predicted_value": root.value,
+            }
+            # self.decay_epsilon()
         return root, extra_info
 
 
