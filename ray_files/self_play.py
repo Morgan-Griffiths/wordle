@@ -240,6 +240,40 @@ class SelfPlay:
 
         # self.close_game()
 
+    def gather_trajectories(self, env, shared_storage, replay_buffer):
+        while ray.get(
+            shared_storage.get_info.remote("num_played_games")
+        ) < self.config.num_warmup_games and not ray.get(
+            shared_storage.get_info.remote("terminate")
+        ):
+            game_history = GameHistory()
+            state, reward, done = env.reset()
+            game_history.state_history.append(state.copy())
+            game_history.word_history.append(env.word_to_action(env.word))
+            while not done:
+                action = np.random.randint(0, self.config.action_space)
+                state, reward, done = env.step(env.action_to_string(action))
+                # Next batch
+                game_history.result_history.append(
+                    state[env.turn - 1, :, Embeddings.RESULT]
+                )
+                game_history.action_history.append(action)
+                game_history.reward_history.append(reward)
+                if not done:
+                    game_history.state_history.append(state.copy())
+                    game_history.word_history.append(env.word_to_action(env.word))
+            for i in range(env.turn):
+                # if i % 2 == 0:
+                game_history.child_visits.append(
+                    [a for a in range(self.config.action_space)]
+                )
+                game_history.root_values.append(1)
+                game_history.max_actions.append(0)
+                # else:
+                #     game_history.child_visits.append(np.arange(config.action_space))
+            # game_history.child_visits = np.array(game_history.child_visits)
+            replay_buffer.save_game.remote(game_history, shared_storage)
+
     # def play_random_game(self):
     #     game_history = GameHistory()
     #     state, reward, done = self.env.reset()

@@ -51,6 +51,115 @@ class Trainer:
         for param_group in self.optimizer.param_groups:
             param_group["lr"] = lr
 
+    def continuous_dynamic_weight_updates(self, replay_buffer, shared_storage):
+        while ray.get(shared_storage.get_info.remote("num_played_games")) < 1:
+            time.sleep(0.1)
+        next_batch = replay_buffer.get_batch.remote()
+        # Training loop
+        while (
+            self.training_step < self.config.num_warmup_training_steps
+            and not ray.get(shared_storage.get_info.remote("terminate"))
+        ):
+            index_batch, batch = ray.get(next_batch)
+            next_batch = replay_buffer.get_batch.remote()
+            self.update_lr()
+            (
+                priorities,
+                actor_loss,
+                dynamic_loss,
+                policy_loss,
+                value_loss,
+            ) = self.update_dynamic_weights(batch, shared_storage)
+
+            if self.config.PER:
+                # Save new priorities in the replay buffer (See https://arxiv.org/abs/1803.00933)
+                replay_buffer.update_priorities.remote(priorities, index_batch)
+
+            # Save to the shared storage
+            if self.training_step % self.config.checkpoint_interval == 0:
+                shared_storage.set_info.remote(
+                    {
+                        "weights": copy.deepcopy(self.model.get_weights()),
+                        "optimizer_state": copy.deepcopy(
+                            dict_to_cpu(self.optimizer.state_dict())
+                        ),
+                    }
+                )
+                if self.config.save_model:
+                    shared_storage.save_checkpoint.remote()
+            shared_storage.set_info.remote(
+                {
+                    "training_step": self.training_step,
+                    "lr": self.optimizer.param_groups[0]["lr"],
+                    "actor_loss": actor_loss,
+                    "dynamic_loss": dynamic_loss,
+                    "total_loss": actor_loss + dynamic_loss,
+                    "policy_loss": policy_loss,
+                    "value_loss": value_loss,
+                }
+            )
+
+            # Managing the self-play / training ratio
+            if self.config.training_delay:
+                time.sleep(self.config.training_delay)
+
+    def update_dynamic_weights(self, batch, shared_storage):
+        """
+        Perform one training step.
+        """
+        # WEIGHT Update
+        (
+            state_batch,
+            action_batch,
+            value_batch,
+            reward_batch,
+            policy_batch,
+            weight_batch,
+            result_batch,
+            word_batch,
+            gradient_scale_batch,
+        ) = batch
+        assert state_batch.shape == (self.config.batch_size, *State.SHAPE)
+        assert value_batch.shape == (self.config.batch_size, 1)
+        assert reward_batch.shape == (self.config.batch_size, 1)
+        assert policy_batch.shape == (self.config.batch_size, self.config.action_space)
+        assert result_batch.dim() == 1
+        assert action_batch.dim() == 1
+
+        device = next(self.model.parameters()).device
+        state_batch = state_batch.to(device)
+        action_batch = action_batch.to(device)
+        reward_batch = reward_batch.to(device)
+        result_batch = result_batch.to(device)
+        dynamics_outputs: DynamicOutputs = self.model.dynamics(
+            state_batch,
+            action_batch.unsqueeze(1),
+        )
+        dynamic_loss = F.nll_loss(dynamics_outputs.state_logprobs, result_batch)
+        loss = dynamic_loss
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+        self.training_step += 1
+        # Priority update
+        target_value_scalar = np.array(reward_batch.cpu(), dtype="float32")
+        priorities = np.zeros_like(target_value_scalar)
+        shared_storage.set_info.remote(
+            {
+                "actor_probs": torch.zeros(self.config.action_space),
+                "actor_value": torch.tensor(1),
+                "dynamic_prob_winning_state": dynamics_outputs.state_probs[0],
+                "results": result_batch[0],
+            }
+        )
+        return (
+            priorities,
+            0,
+            dynamic_loss.mean().item(),
+            0,
+            0,
+        )
+
     def continuous_update_weights(self, replay_buffer, shared_storage):
         # Wait for the replay buffer to be filled
         while ray.get(shared_storage.get_info.remote("num_played_games")) < 1:
