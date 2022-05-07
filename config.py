@@ -27,7 +27,8 @@ class Config:
     PER_alpha = 0.1
     PER = True
     # MUZERO
-    num_warmup_games = 500
+    num_warmup_training_steps = 100
+    num_warmup_games = 50000
     save_model = True
     checkpoint_interval = 5
     discount_rate = 0.85
