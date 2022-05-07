@@ -33,7 +33,7 @@ class Config:
     checkpoint_interval = 5
     discount_rate = 0.85
     epsilon = 0.5
-    action_space = 10
+    action_space = 2500
     value_loss_weight = 0.25
     weight_decay = 0.1
     lr_init = 1e-3

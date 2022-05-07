@@ -138,10 +138,11 @@ class MCTS:
         self.epsilon = max(0, self.epsilon * 0.999)
 
     def run(self, agent: MuZeroNet, state, reward, turn):
+        device = next(agent.parameters()).device
         with torch.no_grad():
             root = create_root(state, reward)
             outputs: PolicyOutputs = agent.policy(
-                root.state.to(next(agent.parameters()).device)
+                root.state.to(device)
             )
             root.expand(turn, self.config.action_space, outputs.probs.cpu().numpy()[0])
             max_tree_depth = 0
@@ -153,7 +154,7 @@ class MCTS:
                 while reward not in [1, -1]:
                     if node.action_probs is None:
                         outputs: PolicyOutputs = agent.policy(
-                            node.state.to(next(agent.parameters()).device)
+                            node.state.to(device)
                         )
                         node.action_probs = outputs.probs[0]
                     if not node.expanded():
@@ -170,10 +171,10 @@ class MCTS:
                     action, node = node.select_child(self.config)
                     if node.state_probs is None:
                         outputs: DynamicOutputs = agent.dynamics(
-                            node.parent.state.to(next(agent.parameters()).device),
+                            node.parent.state.to(device),
                             torch.as_tensor(action)
                             .view(1, 1)
-                            .to(next(agent.parameters()).device),
+                            .to(device),
                         )
                         node.state_probs = outputs.state_probs.cpu().numpy()[0]
                         node.reward_outcomes = outputs.rewards[0]
