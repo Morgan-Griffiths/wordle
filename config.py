@@ -27,6 +27,7 @@ class Config:
     PER_alpha = 0.1
     PER = True
     # MUZERO
+    num_warmup_games = 500
     save_model = True
     checkpoint_interval = 5
     discount_rate = 0.85
@@ -42,7 +43,7 @@ class Config:
     root_exploration_fraction = 0.25
     root_dirichlet_alpha = 0.25
     num_simulations = 5
-    max_simulations = 50
+    max_simulations = 100
     revisit_policy_search_rate = 0
     self_play_delay = 0  # Number of seconds to wait after each played game
     training_delay = 0  # Number of seconds to wait after each training step
