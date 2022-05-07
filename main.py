@@ -71,7 +71,8 @@ class MuZero:
                 + self.config.use_last_model_value * self.config.reanalyse_on_gpu
             )
             if 1 < num_gpus_per_worker:
-                num_gpus_per_worker = math.floor(num_gpus_per_worker) - 0.05
+                num_gpus_per_worker = math.floor(num_gpus_per_worker)
+            num_gpus_per_worker -= -0.05
         else:
             num_gpus_per_worker = 0
         # num_gpus_per_worker = 0.25
