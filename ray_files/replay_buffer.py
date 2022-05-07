@@ -71,7 +71,7 @@ class ReplayBuffer:
                         [value for value in game_history.root_values if value]
                     ),
                     "num_played_games": self.num_played_games,
-                    "num_played_steps": self.num_played_steps
+                    "num_played_steps": self.num_played_steps,
                 }
             )
 
@@ -105,7 +105,7 @@ class ReplayBuffer:
                 result_targets,
                 word_targets,
             ) = self.make_target(game_history, game_pos)
-            
+
             index_batch.append([game_id, game_pos])
             state_batch.append(states)
             action_batch.append(actions)
