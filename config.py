@@ -27,8 +27,8 @@ class Config:
     PER_alpha = 0.1
     PER = True
     # MUZERO
-    num_warmup_training_steps = 100
-    num_warmup_games = 50000
+    num_warmup_training_steps = 10
+    num_warmup_games = 500
     save_model = True
     checkpoint_interval = 5
     discount_rate = 0.85
@@ -70,6 +70,7 @@ class Config:
         / "results"
         / datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S")
     )  # Path to TensorBoard logs
+    dynamics_weight_path = pathlib.Path(__file__).resolve().parents[0] / "weights" / "dynamics"
 
     def update_num_sims(self, i):
         if i < self.training_steps * 0.75 and i > self.training_steps * 0.5:
