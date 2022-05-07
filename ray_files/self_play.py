@@ -263,38 +263,13 @@ class SelfPlay:
                     game_history.state_history.append(state.copy())
                     game_history.word_history.append(env.word_to_action(env.word))
             for i in range(env.turn):
-                # if i % 2 == 0:
                 game_history.child_visits.append(
                     [a for a in range(self.config.action_space)]
                 )
                 game_history.root_values.append(1)
                 game_history.max_actions.append(0)
-                # else:
-                #     game_history.child_visits.append(np.arange(config.action_space))
-            # game_history.child_visits = np.array(game_history.child_visits)
             replay_buffer.save_game.remote(game_history, shared_storage)
 
-    # def play_random_game(self):
-    #     game_history = GameHistory()
-    #     state, reward, done = self.env.reset()
-    #     game_history.state_history.append(state.copy())
-    #     game_history.word_history.append(self.env.word_to_action(self.env.word))
-    #     while not done:
-    #         action = np.random.randint(1,self.config.action_space + 1)
-    #         state, reward, done = self.env.step(self.env.action_to_string(action))
-    #         game_history.store_search_statistics(root, self.config.action_space)
-    #         # Next batch
-    #         game_history.result_history.append(
-    #             state[self.env.turn - 1, :, Embeddings.RESULT]
-    #         )
-    #         game_history.action_history.append(action)
-    #         game_history.reward_history.append(reward)
-    #         if not done:
-    #             game_history.state_history.append(state.copy())
-    #             game_history.word_history.append(
-    #                 self.env.word_to_action(self.env.word)
-    #             )
-    # return game_history
 
     def play_game(self, temperature, temperature_threshold, render):
         game_history = GameHistory()

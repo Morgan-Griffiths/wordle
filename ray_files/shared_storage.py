@@ -23,6 +23,12 @@ class SharedStorage:
 
         torch.save(self.current_checkpoint, path)
 
+    def save_dynamics(self, path=None):
+        if not self.config.dynamics_weight_path:
+            Path(self.config.dynamics_weight_path).mkdir(parents=True, exist_ok=True)
+
+        torch.save(self.current_checkpoint, self.config.dynamics_weight_path)
+
     def get_checkpoint(self):
         return copy.deepcopy(self.current_checkpoint)
 
