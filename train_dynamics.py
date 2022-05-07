@@ -23,7 +23,7 @@ from ray_files.replay_buffer import ReplayBuffer
 from wordle import Wordle
 
 
-def test_state_transition(net, training_params, agent_params, per_buffer):
+def train_dynamics(net, training_params, agent_params, per_buffer):
     optimizer = optim.AdamW(
         net.parameters(), lr=agent_params["learning_rate"], weight_decay=3e-2
     )
@@ -114,7 +114,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "-e", "--epochs", help="Number of training epochs", default=100, type=int
     )
-    parser.add_argument("-b", "--batch", help="Batch size", default=4, type=int)
+    parser.add_argument("-b", "--batch", help="Batch size", default=4096, type=int)
     parser.add_argument(
         "--resume", help="resume training from an earlier run", action="store_true"
     )
@@ -132,18 +132,18 @@ if __name__ == "__main__":
     config = Config()
     config.lr_init = args.lr
     config.batch_size = args.batch
-    buffer_info = load_replay_buffer()
-    checkpoint = copy.copy(CHECKPOINT)
-    checkpoint["num_played_steps"] = buffer_info["num_played_steps"]
-    checkpoint["num_played_games"] = buffer_info["num_played_games"]
-    checkpoint["num_reanalysed_games"] = buffer_info["num_reanalysed_games"]
-    per_buffer = ReplayBuffer.remote(checkpoint, buffer_info["buffer"], config)
-    # mu_zero = MuZeroNet(config)
+    # buffer_info = load_replay_buffer()
+    # checkpoint = copy.copy(CHECKPOINT)
+    # checkpoint["num_played_steps"] = buffer_info["num_played_steps"]
+    # checkpoint["num_played_games"] = buffer_info["num_played_games"]
+    # checkpoint["num_reanalysed_games"] = buffer_info["num_reanalysed_games"]
+    # per_buffer = ReplayBuffer.remote(checkpoint, buffer_info["buffer"], config)
 
     env = Wordle(word_restriction=config.action_space)
     config.word_to_index = env.dictionary_word_to_index
     config.index_to_word = env.dictionary_index_to_word
-    mu_zero = StateActionTransition(config)
+    mu_zero = MuZeroNet(config)
+    # mu_zero = StateActionTransition(config)
 
     network_path = "weights/dynamics"
     # loss_type = dataMapping[args.datatype]
@@ -174,4 +174,4 @@ if __name__ == "__main__":
     #     net.eval()
     #     validation(net, dataset)
     # else:
-    test_state_transition(mu_zero, training_params, agent_params, per_buffer)
+    train_dynamics(mu_zero, training_params, agent_params)
