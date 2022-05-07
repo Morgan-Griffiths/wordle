@@ -70,15 +70,6 @@ class Node:
         for action, p in policy.items():
             self.children[action] = Node(p / policy_sum)
 
-    def expand_state(self, states: int, network_outputs: NetworkOutput):
-        self.reward = network_outputs.reward
-        policy = {
-            s: math.exp(network_outputs.result_logits[0][s]) for s in range(states)
-        }
-        policy_sum = sum(policy.values())
-        for state, p in policy.items():
-            self.children[state] = Node(p / policy_sum)
-
     def add_exploration_noise(self, dirichlet_alpha, exploration_fraction):
         actions = list(self.children.keys())
         noise = np.random.dirichlet([dirichlet_alpha] * len(actions))
@@ -162,7 +153,7 @@ class SelfPlay:
         actions = [action for action in node.children.keys()]
         if temperature == 0:
             action = actions[np.argmax(visit_counts)]
-        elif temperature == float("inf"):
+        elif temperature == 1:
             action = np.random.choice(actions)
         else:
             # See paper appendix Data Generation

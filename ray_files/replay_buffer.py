@@ -315,6 +315,9 @@ class ReplayBuffer:
         target_states.append(game_history.state_history[state_index])
         target_rewards.append(game_history.reward_history[state_index])
         target_policies.append(game_history.child_visits[state_index])
+        # print('target_policies',target_policies)
+        # print('state_index',state_index)
+        # print('game_history.child_visits[state_index]',game_history.child_visits[state_index])
         actions.append(game_history.action_history[state_index])
         word_targets.append(game_history.word_history[state_index])
         result_targets.append(
