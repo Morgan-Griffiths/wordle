@@ -67,15 +67,6 @@ class Node:
         for action, idx in zip(actions, indicies):
             self.children[action] = Node(self, action_probs[idx] / policy_sum)
 
-    def expand_state(self, states: int, network_outputs: NetworkOutput):
-        self.reward = network_outputs.reward
-        policy = {
-            s: math.exp(network_outputs.result_logits[0][s]) for s in range(states)
-        }
-        policy_sum = sum(policy.values())
-        for state, p in policy.items():
-            self.children[state] = Node(p / policy_sum)
-
     def add_exploration_noise(self, dirichlet_alpha, exploration_fraction):
         actions = list(self.children.keys())
         noise = np.random.dirichlet([dirichlet_alpha] * len(actions))
@@ -170,49 +161,14 @@ class MCTS:
                         node.expand(
                             turn + sim_turn, self.config.action_space, node.action_probs
                         )
+                        # action = np.random.randint(self.config.action_space) + 1
+                        # node = node.children[action]
                     if self.config.add_exploration_noise:
                         root.add_exploration_noise(
                             dirichlet_alpha=self.config.root_dirichlet_alpha,
                             exploration_fraction=self.config.root_exploration_fraction,
                         )
-                    # pick action
-                    # print(len(node.children), node.expanded())
-                    # if len(node.children) == self.config.ubc_start:
-                    #     # ucb pick
                     action, node = node.select_child(self.config)
-
-                    # if node.expanded() and np.random.random() < self.epsilon:
-                    #     # random action
-                    #     action = np.random.randint(self.config.action_space)
-                    #     # action, _ = node.select_child(self.config)
-                    #     # inverse_probs = node.action_probs.cpu().numpy()
-                    #     # inverse_probs = np.ones_like(inverse_probs) - inverse_probs
-                    #     # inverse_probs = inverse_probs / np.sum(inverse_probs)
-                    #     # action = np.random.choice(
-                    #     #     len(node.action_probs), p=inverse_probs
-                    #     # )
-                    # else:
-                    #     # network picks
-                    #     action = np.random.choice(
-                    #         len(node.action_probs), p=node.action_probs.cpu().numpy()
-                    #     )
-                    # action += 1  # adjust for 0 padding
-                    # if action previous unexplored, expand node
-                    # if action not in node.children:
-                    #     node.children[action] = Node(
-                    #         parent=node, prior=node.action_probs[action - 1]
-                    #     )
-                    #     outputs: DynamicOutputs = agent.dynamics(
-                    #         node.state.to(next(agent.parameters()).device),
-                    #         torch.as_tensor(action)
-                    #         .view(1, 1)
-                    #         .to(next(agent.parameters()).device),
-                    #     )
-                    #     node.children[
-                    #         action
-                    #     ].state_probs = outputs.state_probs.cpu().numpy()[0]
-                    #     node.children[action].reward_outcomes = outputs.rewards[0]
-                    # node: Node = node.children[action]
                     if node.state_probs is None:
                         outputs: DynamicOutputs = agent.dynamics(
                             node.parent.state.to(next(agent.parameters()).device),
