@@ -70,15 +70,6 @@ class Node:
         for action, p in policy.items():
             self.children[action] = Node(p / policy_sum)
 
-    def expand_state(self, states: int, network_outputs: NetworkOutput):
-        self.reward = network_outputs.reward
-        policy = {
-            s: math.exp(network_outputs.result_logits[0][s]) for s in range(states)
-        }
-        policy_sum = sum(policy.values())
-        for state, p in policy.items():
-            self.children[state] = Node(p / policy_sum)
-
     def add_exploration_noise(self, dirichlet_alpha, exploration_fraction):
         actions = list(self.children.keys())
         noise = np.random.dirichlet([dirichlet_alpha] * len(actions))
@@ -162,7 +153,7 @@ class SelfPlay:
         actions = [action for action in node.children.keys()]
         if temperature == 0:
             action = actions[np.argmax(visit_counts)]
-        elif temperature == float("inf"):
+        elif temperature == 1:
             action = np.random.choice(actions)
         else:
             # See paper appendix Data Generation
@@ -186,6 +177,18 @@ class SelfPlay:
             self.model.set_weights(ray.get(shared_storage.get_info.remote("weights")))
 
             if not test_mode:
+                # if shared_storage.get_info.remote("num_played_games") < self.config.num_warmup_games:
+                #     game_history = self.play_random_game(
+                #         self.config.visit_softmax_temperature_fn(
+                #             trained_steps=ray.get(
+                #                 shared_storage.get_info.remote("training_step")
+                #             )
+                #         ),
+                #         self.config.temperature_threshold,
+                #         False,
+                #     )
+                # else:
+
                 game_history = self.play_game(
                     self.config.visit_softmax_temperature_fn(
                         trained_steps=ray.get(
@@ -236,6 +239,28 @@ class SelfPlay:
                     time.sleep(0.5)
 
         # self.close_game()
+
+    # def play_random_game(self):
+    #     game_history = GameHistory()
+    #     state, reward, done = self.env.reset()
+    #     game_history.state_history.append(state.copy())
+    #     game_history.word_history.append(self.env.word_to_action(self.env.word))
+    #     while not done:
+    #         action = np.random.randint(1,self.config.action_space + 1)
+    #         state, reward, done = self.env.step(self.env.action_to_string(action))
+    #         game_history.store_search_statistics(root, self.config.action_space)
+    #         # Next batch
+    #         game_history.result_history.append(
+    #             state[self.env.turn - 1, :, Embeddings.RESULT]
+    #         )
+    #         game_history.action_history.append(action)
+    #         game_history.reward_history.append(reward)
+    #         if not done:
+    #             game_history.state_history.append(state.copy())
+    #             game_history.word_history.append(
+    #                 self.env.word_to_action(self.env.word)
+    #             )
+    # return game_history
 
     def play_game(self, temperature, temperature_threshold, render):
         game_history = GameHistory()

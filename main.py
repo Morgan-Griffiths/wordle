@@ -72,6 +72,7 @@ class MuZero:
             )
             if 1 < num_gpus_per_worker:
                 num_gpus_per_worker = math.floor(num_gpus_per_worker)
+            num_gpus_per_worker -= -0.05
         else:
             num_gpus_per_worker = 0
         # num_gpus_per_worker = 0.25

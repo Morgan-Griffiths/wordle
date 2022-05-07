@@ -12,6 +12,7 @@ from globals import (
     dictionary,
     index_to_letter_dict,
     readable_result_dict,
+    target_dictionary,
 )
 from collections import defaultdict
 from prettytable import PrettyTable
@@ -23,8 +24,10 @@ class Wordle:
         if word_restriction is not None:
             step_size = len(dictionary) // word_restriction
             self.dictionary = dictionary[::step_size][:word_restriction]
+            # self.dictionary = target_dictionary
         else:
             self.dictionary = dictionary
+        # self.target_word_dictionary = target_dictionary
         self.alphabet_dict = alphabet_dict
         self.dictionary_word_to_index = {
             word: i for i, word in enumerate(self.dictionary,1)
