@@ -9,7 +9,6 @@ from globals import (
     PolicyOutputs,
     result_index_dict,
     index_result_dict,
-    dictionary_index_to_word,
 )
 from utils import to_tensor, state_transition
 from ML.networks import MuZeroNet
@@ -233,7 +232,7 @@ class MCTS:
                     # get previous state -> new state
                     next_state = state_transition(
                         node.parent.state.cpu().numpy(),
-                        dictionary_index_to_word[action],
+                        self.config.index_to_word[action],
                         np.array(result),
                         np.repeat(action, 5),
                     )
@@ -286,7 +285,7 @@ class GameHistory:
                     root.children[a].visit_count / sum_visits
                     if a in root.children
                     else 0
-                    for a in range(action_space)
+                    for a in range(1,action_space+1)
                 ]
             )
 
