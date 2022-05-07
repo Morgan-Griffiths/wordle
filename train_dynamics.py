@@ -5,9 +5,16 @@ import ray
 import torch
 from torch import optim
 import numpy as np
+from MCTS_mu import GameHistory
 from ML.networks import MuZeroNet, TestNet, StateActionTransition
 from config import Config
-from globals import DynamicOutputs, PolicyOutputs, index_result_dict, CHECKPOINT
+from globals import (
+    DynamicOutputs,
+    Embeddings,
+    PolicyOutputs,
+    index_result_dict,
+    CHECKPOINT,
+)
 from experiments.generate_data import load_data
 from experiments.globals import (
     LearningCategories,
@@ -23,46 +30,78 @@ from ray_files.replay_buffer import ReplayBuffer
 from wordle import Wordle
 
 
+def gather_trajectories(env, per_buffer, config):
+    for _ in range(config.num_warmup_games):
+        game_history = GameHistory()
+        state, reward, done = env.reset()
+        game_history.state_history.append(state.copy())
+        game_history.word_history.append(env.word_to_action(env.word))
+        while not done:
+
+            action = np.random.randint(0, config.action_space)
+            state, reward, done = env.step(env.action_to_string(action))
+            # Next batch
+            game_history.result_history.append(
+                state[env.turn - 1, :, Embeddings.RESULT]
+            )
+            game_history.action_history.append(action)
+            game_history.reward_history.append(reward)
+            if not done:
+                game_history.state_history.append(state.copy())
+                game_history.word_history.append(env.word_to_action(env.word))
+        for i in range(env.turn):
+            # if i % 2 == 0:
+            game_history.child_visits.append(np.arange(config.action_space))
+            game_history.root_values.append(1)
+            game_history.max_actions.append(0)
+            # else:
+            #     game_history.child_visits.append(np.arange(config.action_space))
+
+        per_buffer.save_game.remote(game_history)
+    return per_buffer
+
+
 def train_dynamics(net, training_params, agent_params, per_buffer):
     optimizer = optim.AdamW(
         net.parameters(), lr=agent_params["learning_rate"], weight_decay=3e-2
     )
     scores = []
     score_window = deque(maxlen=100)
-    next_batch = per_buffer.get_batch.remote()
-    index_batch, batch = ray.get(next_batch)
-    (
-        state_batch,
-        action_batch,
-        value_batch,
-        reward_batch,
-        policy_batch,
-        weight_batch,
-        result_batch,
-        word_batch,
-        gradient_scale_batch,
-    ) = batch
-    # print(state_batch)
-    # print(action_batch)
-    for epoch in range(training_params["epochs"]):
-        sys.stdout.write("\r")
-        outputs: DynamicOutputs = net.dynamics(
+    for _ in range(config.num_warmup_training_steps):
+        next_batch = per_buffer.get_batch.remote()
+        index_batch, batch = ray.get(next_batch)
+        (
             state_batch,
-            action_batch.unsqueeze(1),
-        )
-        loss = F.nll_loss(outputs.state_logprobs, result_batch)
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-        score_window.append(loss.item())
-        scores.append(np.mean(score_window))
-        sys.stdout.flush()
-        sys.stdout.write(f", epoch {epoch}")
-        sys.stdout.flush()
-        sys.stdout.write(f", loss {np.mean(score_window):.4f}")
-        sys.stdout.flush()
-    # print(f"Saving weights to {training_params['load_path']}")
-    # torch.save(net.state_dict(), training_params["load_path"])
+            action_batch,
+            value_batch,
+            reward_batch,
+            policy_batch,
+            weight_batch,
+            result_batch,
+            word_batch,
+            gradient_scale_batch,
+        ) = batch
+        # print(state_batch)
+        # print(action_batch)
+        for epoch in range(training_params["epochs"]):
+            sys.stdout.write("\r")
+            outputs: DynamicOutputs = net.dynamics(
+                state_batch,
+                action_batch.unsqueeze(1),
+            )
+            loss = F.nll_loss(outputs.state_logprobs, result_batch)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            score_window.append(loss.item())
+            scores.append(np.mean(score_window))
+            sys.stdout.flush()
+            sys.stdout.write(f", epoch {epoch}")
+            sys.stdout.flush()
+            sys.stdout.write(f", loss {np.mean(score_window):.4f}")
+            sys.stdout.flush()
+        print(f"Saving weights to {training_params['load_path']}")
+        torch.save(net.state_dict(), training_params["load_path"])
     validation(net, batch)
 
 
@@ -124,6 +163,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "-v", dest="validate", help="validate the trained network", action="store_true"
     )
+    parser.add_argument(
+        "-g", dest="warmup_games", help="number of warmup games to play", default=50
+    )
+    parser.add_argument(
+        "-s", dest="warmup_steps", help="number of dynamics training steps", default=10
+    )
     parser.set_defaults(resume=False)
     parser.set_defaults(validate=False)
     args = parser.parse_args()
@@ -132,12 +177,14 @@ if __name__ == "__main__":
     config = Config()
     config.lr_init = args.lr
     config.batch_size = args.batch
+    config.num_warmup_games = args.warmup_games
+    config.num_warmup_training_steps = args.warmup_steps
     # buffer_info = load_replay_buffer()
-    # checkpoint = copy.copy(CHECKPOINT)
+    checkpoint = copy.copy(CHECKPOINT)
     # checkpoint["num_played_steps"] = buffer_info["num_played_steps"]
     # checkpoint["num_played_games"] = buffer_info["num_played_games"]
     # checkpoint["num_reanalysed_games"] = buffer_info["num_reanalysed_games"]
-    # per_buffer = ReplayBuffer.remote(checkpoint, buffer_info["buffer"], config)
+    per_buffer = ReplayBuffer.remote(checkpoint, {}, config)
 
     env = Wordle(word_restriction=config.action_space)
     config.word_to_index = env.dictionary_word_to_index
@@ -174,4 +221,5 @@ if __name__ == "__main__":
     #     net.eval()
     #     validation(net, dataset)
     # else:
-    train_dynamics(mu_zero, training_params, agent_params)
+    per_buffer = gather_trajectories(env, per_buffer, config)
+    train_dynamics(mu_zero, training_params, agent_params, per_buffer)
