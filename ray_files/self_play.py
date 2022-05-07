@@ -177,6 +177,18 @@ class SelfPlay:
             self.model.set_weights(ray.get(shared_storage.get_info.remote("weights")))
 
             if not test_mode:
+                # if shared_storage.get_info.remote("num_played_games") < self.config.num_warmup_games:
+                #     game_history = self.play_random_game(
+                #         self.config.visit_softmax_temperature_fn(
+                #             trained_steps=ray.get(
+                #                 shared_storage.get_info.remote("training_step")
+                #             )
+                #         ),
+                #         self.config.temperature_threshold,
+                #         False,
+                #     )
+                # else:
+
                 game_history = self.play_game(
                     self.config.visit_softmax_temperature_fn(
                         trained_steps=ray.get(
@@ -227,6 +239,28 @@ class SelfPlay:
                     time.sleep(0.5)
 
         # self.close_game()
+
+    # def play_random_game(self):
+    #     game_history = GameHistory()
+    #     state, reward, done = self.env.reset()
+    #     game_history.state_history.append(state.copy())
+    #     game_history.word_history.append(self.env.word_to_action(self.env.word))
+    #     while not done:
+    #         action = np.random.randint(1,self.config.action_space + 1)
+    #         state, reward, done = self.env.step(self.env.action_to_string(action))
+    #         game_history.store_search_statistics(root, self.config.action_space)
+    #         # Next batch
+    #         game_history.result_history.append(
+    #             state[self.env.turn - 1, :, Embeddings.RESULT]
+    #         )
+    #         game_history.action_history.append(action)
+    #         game_history.reward_history.append(reward)
+    #         if not done:
+    #             game_history.state_history.append(state.copy())
+    #             game_history.word_history.append(
+    #                 self.env.word_to_action(self.env.word)
+    #             )
+    # return game_history
 
     def play_game(self, temperature, temperature_threshold, render):
         game_history = GameHistory()
