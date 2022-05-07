@@ -1,172 +1,305 @@
-from collections import deque
 import copy
-import sys
-import ray
-from ray.train import Trainer
-import torch
-from torch import optim
-import numpy as np
-from MCTS_mu import GameHistory
+import math
+import pathlib
+import pickle
+import time
 import torch.multiprocessing as mp
-from ML.networks import MuZeroNet, TestNet, StateActionTransition
 from config import Config
-from globals import (
-    DynamicOutputs,
-    Embeddings,
-    PolicyOutputs,
-    index_result_dict,
-    CHECKPOINT,
-)
-from experiments.generate_data import load_data
-from experiments.globals import (
-    LearningCategories,
-    actionSpace,
-    DataTypes,
-    NetworkConfig,
-    dataMapping,
-)
-from collections import Counter
-import torch.nn.functional as F
-from ray_files.replay_buffer import ReplayBuffer
+from ray_files.utils import CPUActor
+from ray_files.validate_model import ValidateModel
 from wordle import Wordle
+from globals import CHECKPOINT
+import torch
+import ray
+import numpy as np
+from ray_files.trainer import Trainer
+from ray_files.shared_storage import SharedStorage
+from ray_files.replay_buffer import ReplayBuffer, Reanalyse
+from ray_files.self_play import SelfPlay
+from torch.utils.tensorboard import SummaryWriter
 
 
-def gather_trajectories(env, per_buffer, config):
-    for _ in range(config.num_warmup_games):
-        game_history = GameHistory()
-        state, reward, done = env.reset()
-        game_history.state_history.append(state.copy())
-        game_history.word_history.append(env.word_to_action(env.word))
-        while not done:
+class MuDyno:
+    def __init__(self, config):
+        self.config = config
+        self.env = Wordle(word_restriction=self.config.action_space)
+        self.config.word_to_index = self.env.dictionary_word_to_index
+        self.config.index_to_word = self.env.dictionary_index_to_word
+        np.random.seed(self.config.seed)
+        torch.manual_seed(self.config.seed)
+        if config.train_on_gpu:
+            self.num_gpus = torch.cuda.device_count()
+        else:
+            self.num_gpus = 0
+        print("Is gpu avail ", torch.cuda.is_available())
+        print("Number of processors: ", mp.cpu_count())
+        print(f"Number of GPUs: {self.num_gpus}")
+        total_gpus = self.num_gpus
+        ray.init(num_gpus=total_gpus, ignore_reinit_error=True)
 
-            action = np.random.randint(0, config.action_space)
-            state, reward, done = env.step(env.action_to_string(action))
-            # Next batch
-            game_history.result_history.append(
-                state[env.turn - 1, :, Embeddings.RESULT]
+        # Checkpoint and replay buffer used to initialize workers
+        self.checkpoint = copy.copy(CHECKPOINT)
+        self.replay_buffer = {}
+        cpu_actor = CPUActor.remote()
+        cpu_weights = cpu_actor.get_initial_weights.remote(self.config)
+        self.checkpoint["weights"], self.summary = copy.deepcopy(ray.get(cpu_weights))
+
+        # Workers
+        self.self_play_workers = None
+        self.test_worker = None
+        self.training_worker = None
+        self.reanalyse_worker = None
+        self.replay_buffer_worker = None
+        self.shared_storage_worker = None
+
+    def train(self, log_in_tensorboard=True):
+        """
+        Spawn ray workers and launch the training.
+        Args:
+            log_in_tensorboard (bool): Start a testing worker and log its performance in TensorBoard.
+        """
+        # Manage GPUs
+        if 0 < self.num_gpus:
+            num_gpus_per_worker = self.num_gpus / (
+                self.config.train_on_gpu
+                + self.config.num_workers * self.config.selfplay_on_gpu
+                + log_in_tensorboard * self.config.selfplay_on_gpu
+                + self.config.use_last_model_value * self.config.reanalyse_on_gpu
             )
-            game_history.action_history.append(action)
-            game_history.reward_history.append(reward)
-            if not done:
-                game_history.state_history.append(state.copy())
-                game_history.word_history.append(env.word_to_action(env.word))
-        for i in range(env.turn):
-            # if i % 2 == 0:
-            game_history.child_visits.append([a for a in range(config.action_space)])
-            game_history.root_values.append(1)
-            game_history.max_actions.append(0)
-            # else:
-            #     game_history.child_visits.append(np.arange(config.action_space))
-        # game_history.child_visits = np.array(game_history.child_visits)
-        per_buffer.save_game.remote(game_history)
-    return per_buffer
+            if 1 < num_gpus_per_worker:
+                num_gpus_per_worker = math.floor(num_gpus_per_worker)
+            num_gpus_per_worker -= 0.05
+        else:
+            num_gpus_per_worker = 0
+        # num_gpus_per_worker = 0.25
+        print("num_gpus_per_worker", num_gpus_per_worker)
+        # Initialize workers
+        self.training_worker = Trainer.options(
+            num_cpus=0,
+            num_gpus=num_gpus_per_worker if self.config.train_on_gpu else 0,
+        ).remote(self.checkpoint, self.config)
+        self.shared_storage_worker = SharedStorage.options(
+            num_cpus=0,
+            num_gpus=num_gpus_per_worker if self.config.selfplay_on_gpu else 0,
+        ).remote(
+            self.checkpoint,
+            self.config,
+        )
+        self.shared_storage_worker.set_info.remote("terminate", False)
+
+        self.replay_buffer_worker = ReplayBuffer.remote(
+            self.checkpoint, self.replay_buffer, self.config
+        )
+
+        if self.config.use_last_model_value:
+            self.reanalyse_worker = Reanalyse.options(
+                num_cpus=0,
+                num_gpus=num_gpus_per_worker if self.config.reanalyse_on_gpu else 0,
+            ).remote(self.checkpoint, self.config)
+
+        self.self_play_workers = [
+            SelfPlay.options(
+                num_cpus=0,
+                num_gpus=num_gpus_per_worker if self.config.selfplay_on_gpu else 0,
+            ).remote(
+                self.checkpoint,
+                self.env,
+                self.config,
+                self.config.seed + seed,
+            )
+            for seed in range(self.config.num_workers)
+        ]
+
+        # Launch workers
+        [
+            self_play_worker.gather_trajectories.remote(
+                self.env.copy(), self.shared_storage_worker, self.replay_buffer_worker
+            )
+            for self_play_worker in self.self_play_workers
+        ]
+        self.training_worker.continuous_dynamic_weight_updates.remote(
+            self.replay_buffer_worker, self.shared_storage_worker
+        )
+        if self.config.use_last_model_value:
+            self.reanalyse_worker.reanalyse.remote(
+                self.replay_buffer_worker, self.shared_storage_worker
+            )
+        if log_in_tensorboard:
+            self.logging_loop(
+                num_gpus_per_worker if self.config.selfplay_on_gpu else 0,
+            )
 
 
-def train_dynamics(config, training_params, per_buffer):
-    # device = "cuda:0" if torch.cuda.is_available() else 'cpu'
-    # print('device',device)
-    # net = net.to(device)
-    net = StateActionTransition(config)
-    # net = ray.train.torch.prepare_model(net)
-    optimizer = optim.AdamW(
-        net.parameters(), lr=config.lr_init, weight_decay=3e-2
-    )
+    def logging_loop(self, num_gpus):
+        """
+        Keep track of the training performance.
+        """
+        # Write everything in TensorBoard
+        writer = SummaryWriter(self.config.results_path)
 
-    scores = []
-    score_window = deque(maxlen=100)
-    try:
-        for _ in range(config.num_warmup_training_steps):
-            next_batch = per_buffer.get_batch.remote()
-            index_batch, batch = ray.get(next_batch)
-            (
-                state_batch,
-                action_batch,
-                value_batch,
-                reward_batch,
-                policy_batch,
-                weight_batch,
-                result_batch,
-                word_batch,
-                gradient_scale_batch,
-            ) = batch
-            # state_batch = state_batch.to(device)
-            # action_batch = action_batch.to(device)
-            # result_batch = result_batch.to(device)
-            # print(state_batch)
-            # print(action_batch)
-            for epoch in range(training_params["epochs"]):
-                sys.stdout.write("\r")
-                outputs: DynamicOutputs = net.dynamics(
-                    state_batch,
-                    action_batch.unsqueeze(1),
-                )
-                loss = F.nll_loss(outputs.state_logprobs, result_batch)
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-                score_window.append(loss.item())
-                scores.append(np.mean(score_window))
-                sys.stdout.flush()
-                sys.stdout.write(f", epoch {epoch}")
-                sys.stdout.flush()
-                sys.stdout.write(f", loss {np.mean(score_window):.4f}")
-                sys.stdout.flush()
-            print(f"Saving weights to {training_params['load_path']}")
-            torch.save(net.state_dict(), training_params["load_path"])
-    
-        validation(net, batch)
-    except KeyboardInterrupt:
-        pass 
-    per_buffer = None
+        print(
+            "\nTraining...\nRun tensorboard --logdir ./results and go to http://localhost:6006/ to see in real time the training performance.\n"
+        )
 
+        # Save hyperparameters to TensorBoard
+        hp_table = [
+            f"| {key} | {value} |" for key, value in self.config.__dict__.items()
+        ]
+        writer.add_text(
+            "Hyperparameters",
+            "| Parameter | Value |\n|-------|-------|\n" + "\n".join(hp_table),
+        )
+        # Save model representation
+        writer.add_text(
+            "Model summary",
+            self.summary,
+        )
 
-def validation(network, batch):
-    (
-        state_batch,
-        action_batch,
-        value_batch,
-        reward_batch,
-        policy_batch,
-        weight_batch,
-        result_batch,
-        word_batch,
-        gradient_scale_batch,
-    ) = batch
-    while True:
-        print(f"Number of states {len(state_batch)}")
+        # Loop for updating the training performance
+        counter = 0
+        keys = [
+            "total_reward",
+            "muzero_reward",
+            "opponent_reward",
+            "episode_length",
+            "mean_value",
+            "training_step",
+            "lr",
+            "total_loss",
+            "actor_loss",
+            "dynamic_loss",
+            "value_loss",
+            "policy_loss",
+            "actor_probs",
+            "actor_value",
+            "dynamic_prob_winning_state",
+            "results",
+            "actions",
+            "num_played_games",
+            "num_played_steps",
+            "num_reanalysed_games",
+        ]
+        info = ray.get(self.shared_storage_worker.get_info.remote(keys))
         try:
-            sample_idx = int(input(f"Pick a number between 0-{len(state_batch)-1}"))
-        except Exception as e:
-            print(e)
-        # sample_idx = np.random.choice(len(states))
-        state, action = state_batch[sample_idx], action_batch[sample_idx]
-        target_result = result_batch[sample_idx]
-        with torch.no_grad():
-            outputs: DynamicOutputs = network.dynamics(
-                state.unsqueeze(0), action.view(1, 1)
+            while info["training_step"] < self.config.num_warmup_training_steps:
+                info = ray.get(self.shared_storage_worker.get_info.remote(keys))
+                writer.add_histogram(
+                    "2.Dynamics/dynamic_prob_winning_state",
+                    info["dynamic_prob_winning_state"],
+                    counter,
+                )
+                writer.add_histogram(
+                    "2.Dynamics/results",
+                    info["results"],
+                    counter,
+                )
+                writer.add_scalar(
+                    "2.Workers/1.Self_played_games",
+                    info["num_played_games"],
+                    counter,
+                )
+                writer.add_scalar(
+                    "2.Workers/2.Training_steps", info["training_step"], counter
+                )
+                writer.add_scalar(
+                    "2.Workers/3.Self_played_steps", info["num_played_steps"], counter
+                )
+                writer.add_scalar(
+                    "2.Workers/4.Reanalysed_games",
+                    info["num_reanalysed_games"],
+                    counter,
+                )
+                writer.add_scalar(
+                    "2.Workers/5.Training_steps_per_self_played_step_ratio",
+                    info["training_step"] / max(1, info["num_played_steps"]),
+                    counter,
+                )
+                writer.add_scalar("2.Workers/6.Learning_rate", info["lr"], counter)
+                writer.add_scalar(
+                    "3.Loss/1.Total_weighted_loss", info["total_loss"], counter
+                )
+                writer.add_scalar("3.Loss/dynamic_loss", info["dynamic_loss"], counter)
+                writer.add_scalar("3.Loss/total_loss", info["total_loss"], counter)
+                print(
+                    f'Last test reward: {info["total_reward"]:.2f}. Training step: {info["training_step"]}/{self.config.num_warmup_training_steps}. Played games: {info["num_played_games"]}. Loss: {info["total_loss"]:.2f}',
+                    end="\r",
+                )
+                counter += 1
+                time.sleep(0.5)
+        except KeyboardInterrupt:
+            pass
+
+        self.terminate_workers(writer)
+
+    def terminate_workers(self, writer):
+        """
+        Softly terminate the running tasks and garbage collect the workers.
+        """
+        if self.shared_storage_worker:
+            self.shared_storage_worker.set_info.remote("terminate", True)
+            self.checkpoint = ray.get(
+                self.shared_storage_worker.get_checkpoint.remote()
             )
-            print("state", state)
-            print("action", action)
-            print(
-                "actual state prob",
-                outputs.state_probs[0][target_result.item()],
-            )
-            print("winning state prob", outputs.state_probs[0][-1])
-            print("target_result", index_result_dict[target_result.item()])
+        if self.replay_buffer_worker:
+            self.replay_buffer = ray.get(self.replay_buffer_worker.get_buffer.remote())
+
+        print("\nShutting down workers...")
+
+        self.self_play_workers = None
+        self.test_worker = None
+        self.training_worker = None
+        self.reanalyse_worker = None
+        self.replay_buffer_worker = None
+        self.shared_storage_worker = None
+        writer.close()
+
+    def load_model(self, checkpoint_path=None, replay_buffer_path=None):
+        """
+        Load a model and/or a saved replay buffer.
+        Args:
+            checkpoint_path (str): Path to model.checkpoint or model.weights.
+            replay_buffer_path (str): Path to replay_buffer.pkl
+        """
+        # Load checkpoint
+        if checkpoint_path:
+            parent_dir = pathlib.Path(__file__).resolve().parents[0]
+            checkpoint_path = pathlib.Path(parent_dir / checkpoint_path)
+            self.checkpoint = torch.load(checkpoint_path, map_location="cpu")
+            print(f"\nUsing checkpoint from {checkpoint_path}")
+
+        # Load replay buffer
+        if replay_buffer_path:
+            replay_buffer_path = pathlib.Path(replay_buffer_path)
+            with open(replay_buffer_path, "rb") as f:
+                replay_buffer_infos = pickle.load(f)
+            self.replay_buffer = replay_buffer_infos["buffer"]
+            self.checkpoint["num_played_steps"] = replay_buffer_infos[
+                "num_played_steps"
+            ]
+            self.checkpoint["num_played_games"] = replay_buffer_infos[
+                "num_played_games"
+            ]
+            self.checkpoint["num_reanalysed_games"] = replay_buffer_infos[
+                "num_reanalysed_games"
+            ]
+
+            print(f"\nInitializing replay buffer with {replay_buffer_path}")
+        else:
+            print(f"Using empty buffer.")
+            self.replay_buffer = {}
+            self.checkpoint["training_step"] = 0
+            self.checkpoint["num_played_steps"] = 0
+            self.checkpoint["num_played_games"] = 0
+            self.checkpoint["num_reanalysed_games"] = 0
 
 
 if __name__ == "__main__":
-
     import argparse
 
     parser = argparse.ArgumentParser(
         description="""
         Train and evaluate networks on letter representations.
         """
-    )
-
-    parser.add_argument(
-        "-e", "--epochs", help="Number of training epochs", default=100, type=int
     )
     parser.add_argument("-b", "--batch", help="Batch size", default=4096, type=int)
     parser.add_argument(
@@ -179,79 +312,32 @@ if __name__ == "__main__":
         "-v", dest="validate", help="validate the trained network", action="store_true"
     )
     parser.add_argument(
-        "-g", dest="warmup_games", help="number of warmup games to play", default=50
+        "-g","--games", dest="warmup_games", help="number of warmup games to play", default=50,type=int
     )
     parser.add_argument(
-        "-s", dest="warmup_steps", help="number of dynamics training steps", default=10
+        "-s","--steps", dest="warmup_steps", help="number of dynamics training steps", default=10,type=int
+    )
+    parser.add_argument(
+        "-a","--actions", dest="action_space", help="number of actions possible", default=10,type=int
+    )
+    parser.add_argument(
+        "--no_gpu",
+        dest="no_gpu",
+        default=False,
+        action="store_true",
+        help="training epochs",
     )
     parser.set_defaults(resume=False)
     parser.set_defaults(validate=False)
+
     args = parser.parse_args()
-    print(args)
-
     config = Config()
-    config.lr_init = args.lr
-    config.batch_size = args.batch
-    config.num_warmup_games = args.warmup_games
+    config.PER = False
+    config.train_on_gpu = not args.no_gpu
     config.num_warmup_training_steps = args.warmup_steps
-    # buffer_info = load_replay_buffer()
-    checkpoint = copy.copy(CHECKPOINT)
-    # checkpoint["num_played_steps"] = buffer_info["num_played_steps"]
-    # checkpoint["num_played_games"] = buffer_info["num_played_games"]
-    # checkpoint["num_reanalysed_games"] = buffer_info["num_reanalysed_games"]
-    per_buffer = ReplayBuffer.remote(checkpoint, {}, config)
+    config.num_warmup_games = args.warmup_games
+    config.action_space = args.action_space
+    mu_dyno = MuDyno(config)
 
-    env = Wordle(word_restriction=config.action_space)
-    config.word_to_index = env.dictionary_word_to_index
-    config.index_to_word = env.dictionary_index_to_word
-
-    # np.random.seed(config.seed)
-    # torch.manual_seed(config.seed)
-    # if config.train_on_gpu:
-    #     num_gpus = torch.cuda.device_count()
-    # else:
-    #     num_gpus = 0
-    # print("Is gpu avail ", torch.cuda.is_available())
-    # print("Number of processors: ", mp.cpu_count())
-    # print(f"Number of GPUs: {num_gpus}")
-    # total_gpus = num_gpus
-    # ray.init(num_gpus=total_gpus, ignore_reinit_error=True)
-    # mu_zero = MuZeroNet(config)
-    # mu_zero = StateActionTransition(config)
-
-    network_path = "weights/dynamics"
-    # loss_type = dataMapping[args.datatype]
-    agent_params = {
-        "learning_rate": args.lr,
-        "save_dir": "checkpoints",
-        "save_path": network_path,
-        "load_path": network_path,
-    }
-    training_params = {
-        "resume": args.resume,
-        "epochs": args.epochs,
-        "criterion": NetworkConfig.LossFunctions[
-            LearningCategories.MULTICLASS_CATEGORIZATION
-        ],
-        "load_path": network_path,
-    }
-    # network_params = {
-    #     "seed": 346,
-    #     "nA": actionSpace[args.datatype],
-    #     "load_path": network_path,
-    #     "emb_size": 16,
-    # }
-    # dataset = load_data(args.datatype)
-    # if args.validate:
-    #     net = agent_params["network"](network_params)
-    #     net.load_state_dict(torch.load(network_path))
-    #     net.eval()
-    #     validation(net, dataset)
-    # else:
-    per_buffer = gather_trajectories(env, per_buffer, config)
-    train_dynamics(config, training_params, per_buffer)
-
-    # trainer = Trainer(backend="torch", num_workers=4, use_gpu=True)
-    # trainer.start()
-    # results = trainer.run(train_func_distributed,config=config,training_params=training_params,per_buffer=per_buffer)
-    # trainer.shutdown()
+    mu_dyno.train()
+    ray.shutdown()
