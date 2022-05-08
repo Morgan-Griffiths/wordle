@@ -43,8 +43,8 @@ class Config:
     add_exploration_noise = True
     root_exploration_fraction = 0.25
     root_dirichlet_alpha = 0.25
-    num_simulations = 5
-    max_simulations = 100
+    num_simulations = 5000
+    max_simulations = 10000
     revisit_policy_search_rate = 0
     self_play_delay = 0  # Number of seconds to wait after each played game
     training_delay = 0  # Number of seconds to wait after each training step
@@ -57,6 +57,8 @@ class Config:
     selfplay_on_gpu = True
     train_on_gpu = torch.cuda.is_available()  # Train on GPU if available
     use_last_model_value = True
+    load_dynamic_weights = False
+    # paths
     buffer_path = (
         pathlib.Path(__file__).resolve().parents[0] / "dataset"
     )  # Path to TensorBoard logs
