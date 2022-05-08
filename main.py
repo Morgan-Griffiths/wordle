@@ -604,6 +604,7 @@ if __name__ == "__main__":
 
     # main(args.resume, args.model, args.epochs, args.train_type)
     config = Config()
+    config.load_dynamic_weights = True
     config.train_on_gpu = not args.no_gpu
     config.training_steps = args.epochs
     config.num_simulations = args.sims
