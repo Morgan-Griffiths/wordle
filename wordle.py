@@ -30,13 +30,13 @@ class Wordle:
         # self.target_word_dictionary = target_dictionary
         self.alphabet_dict = alphabet_dict
         self.dictionary_word_to_index = {
-            word: i for i, word in enumerate(self.dictionary,1)
+            word: i for i, word in enumerate(self.dictionary, 1)
         }
         self.dictionary_index_to_word = {
-            i: word for i, word in enumerate(self.dictionary,1)
+            i: word for i, word in enumerate(self.dictionary, 1)
         }
-        self.dictionary_index_to_word[0] = '-----'
-        self.dictionary_word_to_index['-----'] = 0
+        self.dictionary_index_to_word[0] = "-----"
+        self.dictionary_word_to_index["-----"] = 0
         self.gamma = 0.05
         self.reset()
 
@@ -51,7 +51,7 @@ class Wordle:
         return self.state, self.rewards, self.game_over
 
     def step(self, word):
-        word = word.upper()
+        word = word.lower()
         if word not in self.dictionary_word_to_index:
             raise ValueError(f"{word.title()} is not contained in the dictionary")
         self.words.append(self.dictionary_word_to_index[word])
@@ -145,7 +145,7 @@ class Wordle:
 
     def word_to_action(self, word: str):
         try:
-            return self.dictionary_word_to_index[word.upper()]
+            return self.dictionary_word_to_index[word.lower()]
         except:
             raise ValueError(f"Invalid word {word}")
 
