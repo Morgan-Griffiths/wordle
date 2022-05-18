@@ -33,7 +33,7 @@ class Config:
     checkpoint_interval = 5
     discount_rate = 0.85
     epsilon = 0.5
-    action_space = 2500
+    action_space = 10
     value_loss_weight = 0.25
     weight_decay = 0.1
     lr_init = 1e-3
@@ -70,6 +70,12 @@ class Config:
         / "results"
         / datetime.datetime.now().strftime("%Y-%m-%d--%H-%M-%S")
     )  # Path to TensorBoard logs
+    # Production
+    production_path = (
+        pathlib.Path(__file__).resolve().parents[0]
+        / "weights"
+        / "production.checkpoint"
+    )
 
     def update_num_sims(self, i):
         if i < self.training_steps * 0.75 and i > self.training_steps * 0.5:
