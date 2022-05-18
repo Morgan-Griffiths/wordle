@@ -117,7 +117,7 @@ class Preprocess(nn.Module):
         # 1, 9, 6, 2, 8
         # [1, 6, 5, 8]
         x = res + letter + col_embs
-        x = rearrange(x,'b t h s -> b (t h) s')
+        x = rearrange(x, "b t h s -> b (t h) s")
         # y = (word + row_embs[:, :, 0]).unsqueeze(-2)
         # y.shape = (B,6,1,8)
         # x.shape = (B,6,5,8)
@@ -326,7 +326,7 @@ class ZeroPolicy(nn.Module):
     def forward(self, state: torch.LongTensor):
         # B,26
         B = state.shape[0]
-        x = self.process_input(state).view(B,-1)
+        x = self.process_input(state).view(B, -1)
         # [B, 240]
         # x = self.transformer(x)
         x = self.output_layer(x)
