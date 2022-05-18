@@ -33,7 +33,7 @@ class Config:
     checkpoint_interval = 5
     discount_rate = 0.85
     epsilon = 0.5
-    action_space = 2500
+    action_space = 100
     value_loss_weight = 0.25
     weight_decay = 0.1
     lr_init = 1e-3
@@ -43,19 +43,19 @@ class Config:
     add_exploration_noise = True
     root_exploration_fraction = 0.25
     root_dirichlet_alpha = 0.25
-    num_simulations = 5000
-    max_simulations = 10000
+    num_simulations = 500
+    max_simulations = 1000
     revisit_policy_search_rate = 0
     self_play_delay = 0  # Number of seconds to wait after each played game
-    training_delay = 0  # Number of seconds to wait after each training step
+    training_delay = 5  # Number of seconds to wait after each training step
     ratio = None  # Desired training steps per self played step ratio. Equivalent to a synchronous version, training can take much longer. Set it to None to disable it
     temperature_threshold = None  # Number of moves before dropping the temperature given by visit_softmax_temperature_fn to 0 (ie selecting the best action). If None, visit_softmax_temperature_fn is used every time
-    num_workers = 2  # Number of simultaneous threads/workers self-playing to feed the replay buffer
+    num_workers = 8  # Number of simultaneous threads/workers self-playing to feed the replay buffer
     training_steps = 500
     td_steps = 6
     reanalyse_on_gpu = True
     selfplay_on_gpu = True
-    train_on_gpu = torch.cuda.is_available()  # Train on GPU if available
+    train_on_gpu = False  # Train on GPU if available
     use_last_model_value = True
     load_dynamic_weights = False
     # paths
