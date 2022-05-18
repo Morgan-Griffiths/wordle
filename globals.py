@@ -185,7 +185,7 @@ dictionary_index_to_word = {i: word for i, word in enumerate(dictionary, 1)}
 dictionary_index_to_word[0] = "-----"
 dictionary_word_to_index["-----"] = 0
 # print(dictionary)
-alphabet = "".join("-abcdefghijklmnopqrstuvwxzy".upper().split())
+alphabet = "".join("-abcdefghijklmnopqrstuvwxzy".lower().split())
 alphabet_dict = {letter: i for i, letter in enumerate(alphabet)}
 index_to_letter_dict = {i: letter for i, letter in enumerate(alphabet)}
 readable_result_dict = {
