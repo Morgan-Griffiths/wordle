@@ -17,6 +17,7 @@ from globals import (
 from prettytable import PrettyTable
 from scipy.stats import entropy
 
+
 def debug(func):
     def wrapper(*args, **kwags):
         print(f"Running {func.__name__}")
@@ -29,7 +30,7 @@ def state_transition(
     state: np.array, word: str, result: np.array, action: np.array
 ) -> np.array:
     new_state = copy.deepcopy(state)
-    encoded_word = np.array([alphabet_dict[letter] for letter in word.upper()])
+    encoded_word = np.array([alphabet_dict[letter] for letter in word.lower()])
     mask = np.where(new_state == 0)[1]
     turn = min(mask)
     new_state[:, turn, :, Embeddings.LETTER] = encoded_word
