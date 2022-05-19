@@ -27,7 +27,7 @@ class API(object):
     def __init__(self):
         self.seed = 1458
         self.config = Config()
-        self.config.num_simulations = 50
+        self.config.num_simulations = self.config.action_space * 5
         self.env = Wordle(word_restriction=self.config.action_space)
         self.config.word_to_index = self.env.dictionary_word_to_index
         self.config.index_to_word = self.env.dictionary_index_to_word
