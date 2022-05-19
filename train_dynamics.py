@@ -312,13 +312,10 @@ if __name__ == "__main__":
         "-v", dest="validate", help="validate the trained network", action="store_true"
     )
     parser.add_argument(
-        "-g","--games", dest="warmup_games", help="number of warmup games to play", default=50,type=int
+        "-g","--games", dest="warmup_games", help="number of warmup games to play", default=5000,type=int
     )
     parser.add_argument(
-        "-s","--steps", dest="warmup_steps", help="number of dynamics training steps", default=10,type=int
-    )
-    parser.add_argument(
-        "-a","--actions", dest="action_space", help="number of actions possible", default=10,type=int
+        "-s","--steps", dest="warmup_steps", help="number of dynamics training steps", default=100,type=int
     )
     parser.add_argument(
         "--no_gpu",
@@ -331,12 +328,14 @@ if __name__ == "__main__":
     parser.set_defaults(validate=False)
 
     args = parser.parse_args()
+
+    print('args',args)
     config = Config()
     config.PER = False
     config.train_on_gpu = not args.no_gpu
     config.num_warmup_training_steps = args.warmup_steps
     config.num_warmup_games = args.warmup_games
-    config.action_space = args.action_space
+    config.load_dynamic_weights = False
     mu_dyno = MuDyno(config)
 
     mu_dyno.train()
