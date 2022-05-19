@@ -588,7 +588,7 @@ if __name__ == "__main__":
         "--sims",
         "-s",
         dest="sims",
-        default=20,
+        default=500,
         type=int,
         help="number of times to search the MCTS tree",
     )
@@ -601,6 +601,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
+    print('args',args)
     # main(args.resume, args.model, args.epochs, args.train_type)
     config = Config()
     config.load_dynamic_weights = True
