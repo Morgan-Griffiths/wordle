@@ -23,12 +23,12 @@ class Config:
     # PER BUFFER
     batch_size = 4096
     num_unroll_steps = 6
-    replay_buffer_size = 10000
+    replay_buffer_size = 100000
     PER_alpha = 0.1
     PER = True
     # MUZERO
     num_warmup_training_steps = 10
-    num_warmup_games = 500
+    num_warmup_games = 5000
     save_model = True
     checkpoint_interval = 5
     discount_rate = 0.85

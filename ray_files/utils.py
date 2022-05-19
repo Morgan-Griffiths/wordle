@@ -16,7 +16,6 @@ class CPUActor:
             checkpoint = torch.load(config.dynamics_weight_path, map_location="cpu")
             dynamic_dict = model._dynamics.state_dict()
             pretrained_dict = {k[10:]:v for k, v in checkpoint['weights'].items() if k.find('_dynamics') > -1}
-
             model._dynamics.load_state_dict(pretrained_dict)
         weights = model.get_weights()
         summary = str(model).replace("\n", " \n\n")
