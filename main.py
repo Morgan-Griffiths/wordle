@@ -8,7 +8,7 @@ from config import Config
 from ray_files.utils import CPUActor
 from ray_files.validate_model import ValidateModel
 from wordle import Wordle
-from globals import Models, CHECKPOINT
+from globals import CHECKPOINT
 import torch
 import ray
 import numpy as np
@@ -72,7 +72,6 @@ class MuZero:
             )
             if 1 < num_gpus_per_worker:
                 num_gpus_per_worker = math.floor(num_gpus_per_worker)
-            num_gpus_per_worker -= -0.05
         else:
             num_gpus_per_worker = 0
         # num_gpus_per_worker = 0.25
@@ -82,7 +81,6 @@ class MuZero:
             num_cpus=0,
             num_gpus=num_gpus_per_worker if self.config.train_on_gpu else 0,
         ).remote(self.checkpoint, self.config)
-
         self.shared_storage_worker = SharedStorage.options(
             num_cpus=0,
             num_gpus=num_gpus_per_worker if self.config.selfplay_on_gpu else 0,
@@ -579,14 +577,6 @@ if __name__ == "__main__":
         help="resume training",
     )
     parser.add_argument(
-        "--model",
-        "-m",
-        dest="model",
-        metavar=f"[{Models.Q_LEARNING},{Models.AC_LEARNING},{Models.PPO},{Models.POLICY},{Models.MUZERO}]",
-        default=Models.MUZERO,
-        help="which model",
-    )
-    parser.add_argument(
         "--epochs",
         "-e",
         dest="epochs",
@@ -613,6 +603,7 @@ if __name__ == "__main__":
 
     # main(args.resume, args.model, args.epochs, args.train_type)
     config = Config()
+    config.load_dynamic_weights = True
     config.train_on_gpu = not args.no_gpu
     config.training_steps = args.epochs
     config.num_simulations = args.sims
