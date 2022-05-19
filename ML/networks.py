@@ -247,7 +247,7 @@ class StateActionTransition(nn.Module):
         self.col_emb = nn.Embedding(5, Dims.EMBEDDING_SIZE)
         self.row_emb = nn.Embedding(6, Dims.EMBEDDING_SIZE)
         self.config = config
-        self.action_emb = nn.Embedding(12973, 15)
+        self.action_emb = nn.Embedding(config.action_space + 1, 15)
         self.output_layer = mlp(280, [256, 256, 256], Dims.RESULT_STATE)
 
     def get_weights(self):
