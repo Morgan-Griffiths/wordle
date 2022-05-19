@@ -36,7 +36,7 @@ class Wordle:
         return self.state, self.rewards, self.game_over
 
     def step(self, word):
-        word = word.upper()
+        word = word.lower()
         if word not in self.dictionary_word_to_index:
             raise ValueError("Not a real word. Nice try bozo")
         self.words.append(self.dictionary_word_to_index[word])
