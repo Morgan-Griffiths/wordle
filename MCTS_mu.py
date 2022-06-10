@@ -35,13 +35,109 @@ C(s) = log((1 + N(s) + C_base)/C_base) + c_init
 W(s) = total action value
 """
 
-def actions_per_turn(turn,action_space):
+
+def actions_per_turn(turn, action_space):
     if turn > 1:
         return action_space
     elif turn == 0:
         return 10
     elif turn == 1:
-        return min(action_space,100)
+        return min(action_space, 100)
+
+
+class NumpyNode:
+    def __init__(self, action, action_space, parent, prior) -> None:
+        self.parent = parent
+        self.prior = prior
+        self.action = action
+        self.action_probs = None
+        self.state_probs = None
+        self.reward_outcomes = None
+        self.value_sum = 0
+        self.children = {}
+        self.state = None
+        self.reward = 0
+        self.child_priors = np.zeros([action_space], dtype=np.float32)
+        self.child_total_value = np.zeros([action_space], dtype=np.float32)
+        self.child_visit_count = np.zeros([action_space], dtype=np.float32)
+
+    def expanded(self) -> bool:
+        return len(self.children) > 0
+
+    @property
+    def visit_count(self):
+        return self.parent.child_visit_count[self.action]
+
+    @visit_count.setter
+    def visit_count(self, value):
+        self.parent.child_visit_count[self.action] = value
+
+    @property
+    def total_value(self):
+        return self.parent.child_total_value[self.action]
+
+    @total_value.setter
+    def total_value(self, value):
+        self.parent.child_total_value[self.action] = value
+
+    @property
+    def value(self) -> float:
+        if self.visit_count == 0:
+            return 0
+        return self.value_sum / self.visit_count
+
+    def expand(self, turn: int, action_space: int, action_probs: np.array):
+        # num_actions = actions_per_turn(turn,action_space)
+        indicies = np.arange(action_space)
+        actions = indicies + 1
+        action_probs = action_probs[indicies]
+        policy_sum = sum(action_probs)
+        for action, idx in zip(actions, indicies):
+            self.children[action] = Node(self, action_probs[idx] / policy_sum)
+
+    def add_exploration_noise(self, dirichlet_alpha, exploration_fraction):
+        actions = list(self.children.keys())
+        noise = np.random.dirichlet([dirichlet_alpha] * len(actions))
+        frac = exploration_fraction
+        for a, n in zip(actions, noise):
+            self.children[a].prior = self.children[a].prior * (1 - frac) + n * frac
+
+    def select_child(self, config):
+        # print("lenght", len(self.children))
+        # for action, child in self.children.items():
+        #     print("check", action, child)
+        _, action, child = max(
+            (self.ucb_score(child, config), action, child)
+            for action, child in self.children.items()
+        )
+        return action, child
+
+    def ucb_score(self, child, config) -> float:
+        pb_c = (
+            math.log(
+                (child.parent.visit_count + config.pb_c_base + 1) / config.pb_c_base
+            )
+            + config.pb_c_init
+        )
+        pb_c *= math.sqrt(child.parent.visit_count) / (child.visit_count + 1)
+
+        prior_score = pb_c * child.prior
+        if child.visit_count > 0:
+            value_score = child.reward + config.discount_rate * child.value
+        else:
+            value_score = 0
+        return prior_score + value_score
+
+    def backprop(self, value, config):
+        # print("backprop", value)
+        node = self
+        while node.parent:
+            node.visit_count += 1
+            node.total_value += value + value
+            value = node.reward + config.discount_rate * value
+            node = node.parent
+        node.total_value += value
+        node.visit_count += 1
 
 
 class Node:
@@ -67,7 +163,7 @@ class Node:
         return self.value_sum / self.visit_count
 
     def expand(self, turn: int, action_space: int, action_probs: np.array):
-        num_actions = actions_per_turn(turn,action_space)
+        # num_actions = actions_per_turn(turn,action_space)
         indicies = np.arange(action_space)
         actions = indicies + 1
         action_probs = action_probs[indicies]
@@ -150,9 +246,7 @@ class MCTS:
         device = next(agent.parameters()).device
         with torch.no_grad():
             root = create_root(state, reward)
-            outputs: PolicyOutputs = agent.policy(
-                root.state.to(device)
-            )
+            outputs: PolicyOutputs = agent.policy(root.state.to(device))
             root.expand(turn, self.config.action_space, outputs.probs.cpu().numpy()[0])
             max_tree_depth = 0
             for _ in range(self.config.num_simulations):
@@ -162,9 +256,7 @@ class MCTS:
                 sim_turn = 1
                 while reward not in [1, -1]:
                     if node.action_probs is None:
-                        outputs: PolicyOutputs = agent.policy(
-                            node.state.to(device)
-                        )
+                        outputs: PolicyOutputs = agent.policy(node.state.to(device))
                         node.action_probs = outputs.probs[0]
                     if not node.expanded():
                         node.expand(
@@ -181,9 +273,7 @@ class MCTS:
                     if node.state_probs is None:
                         outputs: DynamicOutputs = agent.dynamics(
                             node.parent.state.to(device),
-                            torch.as_tensor(action)
-                            .view(1, 1)
-                            .to(device),
+                            torch.as_tensor(action).view(1, 1).to(device),
                         )
                         node.state_probs = outputs.state_probs.cpu().numpy()[0]
                         node.reward_outcomes = outputs.rewards[0]
@@ -251,7 +341,7 @@ class GameHistory:
                     root.children[a].visit_count / sum_visits
                     if a in root.children
                     else 0
-                    for a in range(1,action_space+1)
+                    for a in range(1, action_space + 1)
                 ]
             )
 
