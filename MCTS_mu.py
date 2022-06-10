@@ -35,6 +35,14 @@ C(s) = log((1 + N(s) + C_base)/C_base) + c_init
 W(s) = total action value
 """
 
+def actions_per_turn(turn,action_space):
+    if turn > 1:
+        return action_space
+    elif turn == 0:
+        return 10
+    elif turn == 1:
+        return min(action_space,100)
+
 
 class Node:
     def __init__(self, parent, prior) -> None:
@@ -59,8 +67,9 @@ class Node:
         return self.value_sum / self.visit_count
 
     def expand(self, turn: int, action_space: int, action_probs: np.array):
+        num_actions = actions_per_turn(turn,action_space)
         indicies = np.arange(action_space)
-        actions = np.arange(action_space) + 1
+        actions = indicies + 1
         action_probs = action_probs[indicies]
         policy_sum = sum(action_probs)
         for action, idx in zip(actions, indicies):
