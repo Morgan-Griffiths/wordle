@@ -1,8 +1,6 @@
 import datetime
 import pathlib
 
-import torch
-
 
 class Config:
     seed = 1234
@@ -13,6 +11,17 @@ class Config:
     SGD_epoch = 4
     update_every = 4
     learning_update = 0
+    action_space = 100
+    # Mcts
+    nodes_per_turn = {
+        0: 100,
+        1: 500,
+        2: action_space,
+        3: action_space,
+        4: action_space,
+        5: action_space,
+    }
+    node_policy_random_split = 0.75
     # Optimizer
     beta_1 = 0.9
     beta_2 = 0.95
@@ -33,7 +42,6 @@ class Config:
     checkpoint_interval = 5
     discount_rate = 0.85
     epsilon = 0.5
-    action_space = 100
     value_loss_weight = 0.25
     weight_decay = 0.1
     lr_init = 1e-3
@@ -78,7 +86,9 @@ class Config:
         / "weights"
         / "production.checkpoint"
     )
-    dynamics_weight_path = pathlib.Path(__file__).resolve().parents[0] / "weights" / "dynamics"
+    dynamics_weight_path = (
+        pathlib.Path(__file__).resolve().parents[0] / "weights" / "dynamics"
+    )
 
     def update_num_sims(self, i):
         if i < self.training_steps * 0.75 and i > self.training_steps * 0.5:
