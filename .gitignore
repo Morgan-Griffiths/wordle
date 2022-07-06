@@ -1,5 +1,6 @@
 *__pycache__
 *.npy
+*.pdf
 .DS_Store
 .vscode/
 dataset/
