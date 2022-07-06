@@ -26,7 +26,7 @@ class Wordle:
             self.dictionary = dictionary[::step_size][:word_restriction]
             # self.dictionary = target_dictionary
         else:
-            self.dictionary = dictionary
+            self.dictionary = target_dictionary
         # self.target_word_dictionary = target_dictionary
         self.alphabet_dict = alphabet_dict
         self.dictionary_word_to_index = {
@@ -35,13 +35,14 @@ class Wordle:
         self.dictionary_index_to_word = {
             i: word for i, word in enumerate(self.dictionary, 1)
         }
+        self.target_word_dictionary = target_dictionary
         self.dictionary_index_to_word[0] = "-----"
         self.dictionary_word_to_index["-----"] = 0
         self.gamma = 0.05
         self.reset()
 
     def reset(self):
-        self.word = np.random.choice(self.dictionary)
+        self.word = np.random.choice(self.target_word_dictionary)
         self.alphabet = {letter: Tokens.UNKNOWN for letter in alphabet}
         self.turn = 0
         self.state = np.zeros(State.SHAPE)
@@ -99,20 +100,18 @@ class Wordle:
                 update = Tokens.MISSING
             self.update_state(
                 slot=i,
-                state=update,
+                result=update,
                 letter=self.alphabet_dict[letter],
-                turn=self.turn,
-                word=word,
+                turn=self.turn
             )
             letter_result[i] = update
             letter_freqs[letter] = max(0, letter_freqs[letter] - 1)
         return letter_result
 
-    def update_state(self, slot, state, letter, turn, word):
-        # 5, 6, 3
+    def update_state(self, slot, result, letter, turn):
+        # 5, 6, 2
         self.state[turn, slot, Embeddings.LETTER] = letter
-        self.state[turn, slot, Embeddings.RESULT] = state
-        self.state[turn, slot, Embeddings.WORD] = self.word_to_action(word)
+        self.state[turn, slot, Embeddings.RESULT] = result
 
     def visualize_state(self):
         letter_headers = [f"Letters_{i}" for i in range(5)]
