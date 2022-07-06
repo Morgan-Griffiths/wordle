@@ -43,6 +43,16 @@ def actions_per_turn(turn,action_space):
     elif turn == 1:
         return min(action_space,100)
 
+def top_k_actions(probs,k):
+    highest_indicies = np.argpartition(probs[None, :], -k)[0][-k:]
+    all_indicies = set(range(len(probs)))
+    remaining = np.array(all_indicies - set(highest_indicies))
+    additional_indicies = np.random.choice(remaining,k)
+    combined = np.concatenate([highest_indicies,additional_indicies])
+    freqs = probs[combined]
+
+""" i have a few options. i expand over all the nodes like before, but renormalize the chosen nodes and change the rest to 0. 
+Or i only expand up to the desired number, and then on the learning pass, i pad out the action tree in creating the policy targets"""
 
 class Node:
     def __init__(self, parent, prior) -> None:
