@@ -92,9 +92,6 @@ class Preprocess(nn.Module):
             Tokens.EXACT + 1, Dims.EMBEDDING_SIZE, padding_idx=0
         )
         self.letter_emb = nn.Embedding(28, Dims.EMBEDDING_SIZE, padding_idx=0)
-        self.action_emb = nn.Embedding(
-            config.action_space + 1, Dims.EMBEDDING_SIZE, padding_idx=0
-        )
         self.col_emb = nn.Embedding(5, Dims.EMBEDDING_SIZE)
         self.row_emb = nn.Embedding(6, Dims.EMBEDDING_SIZE)
         self.positional_emb = nn.Embedding(30, Dims.EMBEDDING_SIZE)
@@ -108,7 +105,6 @@ class Preprocess(nn.Module):
         # print(state)
         res = self.result_emb(state[:, :, :, Embeddings.RESULT])
         letter = self.letter_emb(state[:, :, :, Embeddings.LETTER])
-        # word = self.action_emb(state[:, :, 0, Embeddings.WORD])
         # rows = torch.arange(0, 6).repeat(B, 5).reshape(B, 5, 6).permute(0, 2, 1)
         cols = torch.arange(0, 5).repeat(B, 6).reshape(B, 6, 5)
         # row_embs = self.row_emb(rows.to(device))
@@ -122,7 +118,6 @@ class Preprocess(nn.Module):
         # y.shape = (B,6,1,8)
         # x.shape = (B,6,5,8)
         # x = torch.cat((x, y), dim=-2)
-        # word = self.word_emb(state[:, :, 0, Embeddings.WORD].unsqueeze(-1))
         # x = torch.cat((x, word), dim=-2)
         return x
 
@@ -239,7 +234,6 @@ def compute_batch(
 class StateActionTransition(nn.Module):
     def __init__(self, config):
         super(StateActionTransition, self).__init__()
-        self.process_input = Preprocess(config)
         self.result_emb = nn.Embedding(
             Tokens.EXACT + 1, Dims.EMBEDDING_SIZE, padding_idx=0
         )
@@ -247,7 +241,6 @@ class StateActionTransition(nn.Module):
         self.col_emb = nn.Embedding(5, Dims.EMBEDDING_SIZE)
         self.row_emb = nn.Embedding(6, Dims.EMBEDDING_SIZE)
         self.config = config
-        self.action_emb = nn.Embedding(config.action_space + 1, 15)
         self.output_layer = mlp(280, [256, 256, 256], Dims.RESULT_STATE)
 
     def get_weights(self):
@@ -261,7 +254,6 @@ class StateActionTransition(nn.Module):
         device = state.get_device()
         if device == -1:
             device = "cpu"
-        # # previous_actions = state[:,:,0,Embeddings.WORD] # (B,1)
         action_letters = torch.tensor(
             np.stack(
                 [
@@ -354,6 +346,9 @@ class MuZeroNet(AbstractNetwork):
             self._policy = ZeroPolicy(config)
             self._representation = StateEncoder(config)
             self._dynamics = StateActionTransition(config)
+
+    def __call__(self,state,action):
+        return self._dynamics(state,action)
 
     def representation(self, state):
         return self._representation(state)
