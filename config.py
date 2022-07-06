@@ -18,25 +18,27 @@ class Config:
     beta_2 = 0.95
     L2 = 0.1
     # WORDLE
+    word_restriction = None
     word_to_index = {}
     index_to_word = {}
     # PER BUFFER
     batch_size = 4096
     num_unroll_steps = 6
-    replay_buffer_size = 100000
+    replay_buffer_size = 50000
     PER_alpha = 0.1
     PER = True
     # MUZERO
-    num_warmup_training_steps = 10
+    num_warmup_training_steps = 100
+    num_dynamics_examples = 5000
     num_warmup_games = 5000
     save_model = True
     checkpoint_interval = 5
     discount_rate = 0.85
     epsilon = 0.5
-    action_space = 100
+    action_space = 2309
     value_loss_weight = 0.25
     weight_decay = 0.1
-    lr_init = 1e-3
+    lr_init = 3e-3
     lr_decay_rate = 0.999
     pb_c_base = 19652
     pb_c_init = 1.25
