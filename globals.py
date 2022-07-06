@@ -61,7 +61,7 @@ class Embeddings:
 
 
 class State:
-    SHAPE = (6, 5, 3)
+    SHAPE = (6, 5, 2)
 
 
 class Dims:
