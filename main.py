@@ -22,7 +22,7 @@ from torch.utils.tensorboard import SummaryWriter
 class MuZero:
     def __init__(self, config):
         self.config = config
-        self.env = Wordle(word_restriction=self.config.action_space)
+        self.env = Wordle(word_restriction=self.config.word_restriction)
         self.config.word_to_index = self.env.dictionary_word_to_index
         self.config.index_to_word = self.env.dictionary_index_to_word
         np.random.seed(self.config.seed)
@@ -580,7 +580,7 @@ if __name__ == "__main__":
         "--epochs",
         "-e",
         dest="epochs",
-        default=500,
+        default=5,
         type=int,
         help="training epochs",
     )
@@ -588,7 +588,7 @@ if __name__ == "__main__":
         "--sims",
         "-s",
         dest="sims",
-        default=500,
+        default=50,
         type=int,
         help="number of times to search the MCTS tree",
     )

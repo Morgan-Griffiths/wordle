@@ -43,7 +43,6 @@ def state_transition(
     turn = min(mask)
     new_state[:, turn, :, Embeddings.LETTER] = encoded_word
     new_state[:, turn, :, Embeddings.RESULT] = result
-    new_state[:, turn, :, Embeddings.WORD] = action
     return new_state
 
 

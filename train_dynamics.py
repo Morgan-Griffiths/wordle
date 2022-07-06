@@ -22,7 +22,7 @@ from torch.utils.tensorboard import SummaryWriter
 class MuDyno:
     def __init__(self, config):
         self.config = config
-        self.env = Wordle(word_restriction=self.config.action_space)
+        self.env = Wordle(word_restriction=self.config.word_restriction)
         self.config.word_to_index = self.env.dictionary_word_to_index
         self.config.index_to_word = self.env.dictionary_index_to_word
         np.random.seed(self.config.seed)
@@ -71,7 +71,7 @@ class MuDyno:
             num_gpus_per_worker -= 0.05
         else:
             num_gpus_per_worker = 0
-        # num_gpus_per_worker = 0.25
+        num_gpus_per_worker = 0.5
         print("num_gpus_per_worker", num_gpus_per_worker)
         # Initialize workers
         self.training_worker = Trainer.options(
@@ -306,16 +306,16 @@ if __name__ == "__main__":
         "--resume", help="resume training from an earlier run", action="store_true"
     )
     parser.add_argument(
-        "-lr", help="resume training from an earlier run", type=float, default=3e-3
+        "-lr", help="learning rate", type=float, default=3e-3
     )
     parser.add_argument(
         "-v", dest="validate", help="validate the trained network", action="store_true"
     )
     parser.add_argument(
-        "-g","--games", dest="warmup_games", help="number of warmup games to play", default=5000,type=int
+        "-g","--games", dest="warmup_games", help="number of warmup games to play", default=2e+6,type=int
     )
     parser.add_argument(
-        "-s","--steps", dest="warmup_steps", help="number of dynamics training steps", default=100,type=int
+        "-s","--steps", dest="warmup_steps", help="number of dynamics training steps", default=1000,type=int
     )
     parser.add_argument(
         "--no_gpu",

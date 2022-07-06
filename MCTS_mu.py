@@ -38,6 +38,19 @@ W(s) = total action value
 """
 
 
+def top_k_actions(probs, k):
+    highest_indicies = np.argpartition(probs[None, :], -k)[0][-k:]
+    all_indicies = set(range(len(probs)))
+    remaining = np.array(all_indicies - set(highest_indicies))
+    additional_indicies = np.random.choice(remaining, k)
+    combined = np.concatenate([highest_indicies, additional_indicies])
+    freqs = probs[combined]
+
+
+""" i have a few options. i expand over all the nodes like before, but renormalize the chosen nodes and change the rest to 0. 
+Or i only expand up to the desired number, and then on the learning pass, i pad out the action tree in creating the policy targets"""
+
+
 def create_root(state, reward, numpy=False):
     if numpy:
         root = NumpyNode(0, 100, None, 1)
@@ -57,7 +70,6 @@ def actions_per_turn(turn, action_space):
         return 10
     elif turn == 1:
         return min(action_space, 100)
-
 
 
 def select_state(outputs):
@@ -86,7 +98,6 @@ class MCTS_dict:
         self.Rs = {}  # stores reward outcomes
         self.Vs = {}  # stores values
 
-
     def select_action(self):
         for action in range(self.config.action_space):
             _, action, child = max(
@@ -95,18 +106,15 @@ class MCTS_dict:
             )
         return action
 
-
-    def ucb_score(self,s,a) -> float:
+    def ucb_score(self, s, a) -> float:
         pb_c = (
-            math.log(
-                (self.Ns[s] + self.config.pb_c_base + 1) / self.config.pb_c_base
-            )
+            math.log((self.Ns[s] + self.config.pb_c_base + 1) / self.config.pb_c_base)
             + self.config.pb_c_init
         )
-        pb_c *= math.sqrt(self.Ns[s]) / (self.Nsa[(s,a)] + 1)
+        pb_c *= math.sqrt(self.Ns[s]) / (self.Nsa[(s, a)] + 1)
 
-        prior_score = pb_c * child.prior
-        if self.Nsa[(s,a)] > 0:
+        prior_score = pb_c * self.Pa[s][a]
+        if self.Nsa[(s, a)] > 0:
             value_score = self.Rs[s] + self.config.discount_rate * self.Vs[s]
         else:
             value_score = 0
@@ -150,7 +158,7 @@ class MCTS_dict:
                 sim_turn = turn
                 state = initial_state
                 state_path = [result_from_state(sim_turn, state)]
-                s_key = ''.join(state_path)
+                s_key = "".join(state_path)
                 action_path = []
                 while reward not in [1, -1]:
                     if s_key not in self.Pa:
@@ -188,7 +196,7 @@ class MCTS_dict:
                     current_tree_depth += 1
                     sim_turn += 1
                     state_path.append(state_choice)
-                    s_key = ''.join(state_path)
+                    s_key = "".join(state_path)
                 max_tree_depth = max(max_tree_depth, current_tree_depth)
                 outputs: PolicyOutputs = agent.policy(state)
                 self.backprop(outputs.value.item(), state_path, action_path, reward)
