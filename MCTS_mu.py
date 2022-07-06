@@ -1,3 +1,4 @@
+from re import S
 from typing import Any
 import numpy as np
 import copy
@@ -10,11 +11,12 @@ from globals import (
     result_index_dict,
     index_result_dict,
 )
-from utils import to_tensor, state_transition
+from utils import to_tensor, state_transition, result_from_state
 from ML.networks import MuZeroNet
 from wordle import Wordle
 import math
 import torch
+from collections import defaultdict
 
 """ 
 MuZero MCTS:
@@ -36,6 +38,18 @@ W(s) = total action value
 """
 
 
+def create_root(state, reward, numpy=False):
+    if numpy:
+        root = NumpyNode(0, 100, None, 1)
+        root.state = torch.as_tensor(state).long().unsqueeze(0)
+        root.reward = reward
+    else:
+        root = Node(None, 1)
+        root.state = torch.as_tensor(state).long().unsqueeze(0)
+        root.reward = reward
+    return root
+
+
 def actions_per_turn(turn, action_space):
     if turn > 1:
         return action_space
@@ -43,6 +57,157 @@ def actions_per_turn(turn, action_space):
         return 10
     elif turn == 1:
         return min(action_space, 100)
+
+
+
+def select_state(outputs):
+    state_probs = outputs.state_probs.cpu().numpy()[0]
+    reward_outcomes = outputs.rewards[0]
+    # sample state after
+    state_choice = np.random.choice(len(state_probs), p=state_probs)  # zero padding
+    result, reward = (
+        i[state_choice],
+        reward_outcomes[state_choice],
+    )
+    return result, reward
+
+
+class MCTS_dict:
+    """
+    This class handles the MCTS tree.
+    """
+
+    def __init__(self, config) -> None:
+        self.config = config
+        self.epsilon = config.epsilon
+        self.Ns = {}  # stores #times board s was visited
+        self.Pa = {}  # stores action probes
+        self.Ps = {}  # stores state probs
+        self.Rs = {}  # stores reward outcomes
+        self.Vs = {}  # stores values
+
+
+    def select_action(self):
+        for action in range(self.config.action_space):
+            _, action, child = max(
+                (self.ucb_score(child, self.config), action, child)
+                for action, child in self.children.items()
+            )
+        return action
+
+
+    def ucb_score(self,s,a) -> float:
+        pb_c = (
+            math.log(
+                (self.Ns[s] + self.config.pb_c_base + 1) / self.config.pb_c_base
+            )
+            + self.config.pb_c_init
+        )
+        pb_c *= math.sqrt(self.Ns[s]) / (self.Nsa[(s,a)] + 1)
+
+        prior_score = pb_c * child.prior
+        if self.Nsa[(s,a)] > 0:
+            value_score = self.Rs[s] + self.config.discount_rate * self.Vs[s]
+        else:
+            value_score = 0
+        return prior_score + value_score
+
+    def getActionProb(self, canonicalBoard, temp=1):
+        """
+        This function performs numMCTSSims simulations of MCTS starting from
+        canonicalBoard.
+        Returns:
+            probs: a policy vector where the probability of the ith action is
+                   proportional to Nsa[(s,a)]**(1./temp)
+        """
+        for i in range(self.args.numMCTSSims):
+            self.search(canonicalBoard)
+
+        s = self.game.stringRepresentation(canonicalBoard)
+        counts = [
+            self.Nsa[(s, a)] if (s, a) in self.Nsa else 0
+            for a in range(self.game.getActionSize())
+        ]
+
+        if temp == 0:
+            bestAs = np.array(np.argwhere(counts == np.max(counts))).flatten()
+            bestA = np.random.choice(bestAs)
+            probs = [0] * len(counts)
+            probs[bestA] = 1
+            return probs
+
+        counts = [x ** (1.0 / temp) for x in counts]
+        counts_sum = float(sum(counts))
+        probs = [x / counts_sum for x in counts]
+        return probs
+
+    def run(self, agent: MuZeroNet, initial_state, reward, turn):
+        device = next(agent.parameters()).device
+        with torch.no_grad():
+            for _ in range(self.config.num_simulations):
+                current_tree_depth = 0
+                reward = 0
+                sim_turn = turn
+                state = initial_state
+                state_path = [result_from_state(sim_turn, state)]
+                s_key = ''.join(state_path)
+                action_path = []
+                while reward not in [1, -1]:
+                    if s_key not in self.Pa:
+                        # leaf node
+                        outputs: PolicyOutputs = agent.policy(state.to(device))
+                        self.Pa[s_key] = outputs.probs[0]
+                        self.Ns[s_key] = 0
+                    action = select_action(sim_turn, self.config)
+                    action_path.append(action)
+                    s_a = s_key + str(action)
+                    if s_a not in self.Ps:
+                        outputs: DynamicOutputs = agent.dynamics(
+                            state.to(device),
+                            torch.as_tensor(action).view(1, 1).to(device),
+                        )
+                        self.Ps[s_a] = outputs.state_probs.cpu().numpy()[0]
+                        self.Rs[s_a] = outputs.rewards[0]
+
+                    state_choice = np.random.choice(
+                        len(self.Ps[s_a]), p=self.Ps[s_a]
+                    )  # zero padding
+                    result, reward = (
+                        index_result_dict[state_choice],
+                        self.Rs[s_a][state_choice],
+                    )
+                    # get previous state -> new state
+                    next_state = state_transition(
+                        state.cpu().numpy(),
+                        self.config.index_to_word[action],
+                        np.array(result),
+                        np.repeat(action, 5),
+                    )
+                    reward = int(reward.item())
+                    state = torch.as_tensor(next_state).long()
+                    current_tree_depth += 1
+                    sim_turn += 1
+                    state_path.append(state_choice)
+                    s_key = ''.join(state_path)
+                max_tree_depth = max(max_tree_depth, current_tree_depth)
+                outputs: PolicyOutputs = agent.policy(state)
+                self.backprop(outputs.value.item(), state_path, action_path, reward)
+            extra_info = {
+                "max_tree_depth": max_tree_depth,
+                "root_predicted_value": root.value,
+            }
+            # self.decay_epsilon()
+        return extra_info
+
+    def backprop(self, value, state_path, action_path, reward):
+        while action_path:
+            s = state_path.pop()
+            a = action_path.pop()
+            self.Ns[s] += 1
+            self.Nsa[(s, a)] += 1
+            value = reward + self.config.discount_rate * value
+        s = state_path.pop()
+        self.Ns[s] += 1
 
 
 class NumpyNode:
@@ -87,6 +252,7 @@ class NumpyNode:
         return self.value_sum / self.visit_count
 
     def expand(self, turn: int, action_space: int, action_probs: np.array):
+        # Scale number of actinos across the turns. Sample the top 50% of them from network weights, remaining randomly.
         # num_actions = actions_per_turn(turn,action_space)
         indicies = np.arange(action_space)
         actions = indicies + 1
@@ -133,7 +299,7 @@ class NumpyNode:
         node = self
         while node.parent:
             node.visit_count += 1
-            node.total_value += value + value
+            node.total_value += value
             value = node.reward + config.discount_rate * value
             node = node.parent
         node.total_value += value
@@ -218,26 +384,10 @@ class Node:
         node.visit_count += 1
 
 
-def create_root(state, reward):
-    root = Node(None, 1)
-    root.state = torch.as_tensor(state).long().unsqueeze(0)
-    root.reward = reward
-    return root
-
-
 class MCTS:
     def __init__(self, config) -> None:
         self.config = config
         self.epsilon = config.epsilon
-        self.nodes_per_turn = {
-            0: self.config.action_space,
-            1: self.config.action_space,
-            2: self.config.action_space,
-            3: self.config.action_space,
-            4: self.config.action_space,
-            5: self.config.action_space,
-        }
-        self.node_policy_random_split = 0.75
 
     def decay_epsilon(self):
         self.epsilon = max(0, self.epsilon * 0.999)
