@@ -29,7 +29,6 @@ def test_state(env: Wordle):
     comparison_state[turn, 3, Embeddings.RESULT] = Tokens.MISSING
     comparison_state[turn, 4, Embeddings.LETTER] = alphabet_dict["O"]
     comparison_state[turn, 4, Embeddings.RESULT] = Tokens.MISSING
-    comparison_state[turn, :, Embeddings.WORD] = env.dictionary_word_to_index["HELLO"]
     assert np.array_equal(env.state, comparison_state)
     state, rewards, done = env.step("RAPER")
     turn = 1
@@ -43,7 +42,6 @@ def test_state(env: Wordle):
     comparison_state[turn, 3, Embeddings.RESULT] = Tokens.CONTAINED
     comparison_state[turn, 4, Embeddings.LETTER] = alphabet_dict["R"]
     comparison_state[turn, 4, Embeddings.RESULT] = Tokens.MISSING
-    comparison_state[turn, :, Embeddings.WORD] = env.dictionary_word_to_index["RAPER"]
     assert np.array_equal(env.state, comparison_state)
 
 
