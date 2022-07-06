@@ -18,6 +18,14 @@ from prettytable import PrettyTable
 from scipy.stats import entropy
 
 
+def result_from_state(turn, state):
+    try:
+        result = state[turn][:, Embeddings.RESULT]
+        return result_index_dict[tuple(result)]
+    except:
+        return -1
+
+
 def debug(func):
     def wrapper(*args, **kwags):
         print(f"Running {func.__name__}")
@@ -302,7 +310,7 @@ class Stats:
 
     def store_search_stats(self, root, idx: int = None):
         sum_visits = sum(child.visit_count for child in root.children.values())
-        action_space = range(Dims.OUTPUT)
+        action_space = range(self.config.action_space)
         if idx is None:
             self.child_visits.append(
                 [
