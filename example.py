@@ -187,7 +187,6 @@ B = state_batch.shape[0]
 action_letters = torch.tensor(np.stack([np.array([alphabet_dict[letter] for letter in dictionary_index_to_word[a.item()]]) for a in action_batch])) # (B,5)
 state_letters = state_batch[:,:,:,Embeddings.LETTER] # (B,6,5)
 state_results = state_batch[:,:,:,Embeddings.RESULT] # (B,6,5)
-previous_actions = state_batch[:,:,0,Embeddings.WORD] # (B,1)
 
 print('action_letters',action_letters,action_letters.shape)
 print('state_letters',state_letters,state_letters.shape)
