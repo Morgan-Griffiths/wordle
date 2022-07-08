@@ -4,7 +4,8 @@ from wordle import Wordle
 from ML.networks import MuZeroNet
 from globals import AgentData, Dims, State
 from numpy import zeros
-from MCTS_mu import MCTS, MCTS_dict
+from MCTS_mu import MCTS
+from MCTS_optimized import MCTS_dict
 
 
 @pytest.fixture
@@ -38,7 +39,7 @@ def env():
 @pytest.fixture
 def config():
     config = Config()
-    env = Wordle(word_restriction=config.action_space)
+    env = Wordle(word_restriction=config.word_restriction)
     config.word_to_index = env.dictionary_word_to_index
     config.index_to_word = env.dictionary_index_to_word
     return config
@@ -61,4 +62,9 @@ def mcts(config):
 
 @pytest.fixture
 def mcts_dict(config):
+    return MCTS_dict(config)
+
+
+@pytest.fixture
+def mcts_opt(config):
     return MCTS_dict(config)
