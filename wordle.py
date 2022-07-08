@@ -1,4 +1,5 @@
 from email.policy import default
+from multiprocessing.sharedctypes import Value
 from unittest import result
 import numpy as np
 from copy import deepcopy
@@ -27,7 +28,6 @@ class Wordle:
             # self.dictionary = target_dictionary
         else:
             self.dictionary = target_dictionary
-        # self.target_word_dictionary = target_dictionary
         self.alphabet_dict = alphabet_dict
         self.dictionary_word_to_index = {
             word: i for i, word in enumerate(self.dictionary, 1)
@@ -45,7 +45,7 @@ class Wordle:
         self.word = np.random.choice(self.target_word_dictionary)
         self.alphabet = {letter: Tokens.UNKNOWN for letter in alphabet}
         self.turn = 0
-        self.state = np.zeros(State.SHAPE)
+        self.state = np.zeros(State.SHAPE, dtype=np.int8)
         self.game_over = False
         self.rewards = 0
         self.words = []
@@ -99,10 +99,7 @@ class Wordle:
             else:
                 update = Tokens.MISSING
             self.update_state(
-                slot=i,
-                result=update,
-                letter=self.alphabet_dict[letter],
-                turn=self.turn
+                slot=i, result=update, letter=self.alphabet_dict[letter], turn=self.turn
             )
             letter_result[i] = update
             letter_freqs[letter] = max(0, letter_freqs[letter] - 1)
@@ -140,7 +137,10 @@ class Wordle:
         return env
 
     def action_to_string(self, action: int):
-        return self.dictionary_index_to_word[action]
+        try:
+            return self.dictionary_index_to_word[action]
+        except:
+            raise ValueError(f"Invalid action {action}")
 
     def word_to_action(self, word: str):
         try:
