@@ -54,8 +54,8 @@ class Config:
     add_exploration_noise = True
     root_exploration_fraction = 0.25
     root_dirichlet_alpha = 0.25
-    num_simulations = 500
-    max_simulations = 1000
+    num_simulations = 50
+    max_simulations = 100
     revisit_policy_search_rate = 0
     self_play_delay = 0  # Number of seconds to wait after each played game
     training_delay = 5  # Number of seconds to wait after each training step
