@@ -140,7 +140,7 @@ if __name__ == "__main__":
     per_buffer = ReplayBuffer.remote(checkpoint, buffer_info["buffer"], config)
     # mu_zero = MuZeroNet(config)
 
-    env = Wordle(word_restriction=config.action_space)
+    env = Wordle(word_restriction=config.word_restriction)
     config.word_to_index = env.dictionary_word_to_index
     config.index_to_word = env.dictionary_index_to_word
     mu_zero = StateActionTransition(config)
