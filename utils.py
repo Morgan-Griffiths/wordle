@@ -35,7 +35,7 @@ def debug(func):
 
 
 def state_transition(
-    state: np.array, word: str, result: np.array, action: np.array
+    state: np.array, word: str, result: np.array
 ) -> np.array:
     new_state = copy.deepcopy(state)
     encoded_word = np.array([alphabet_dict[letter] for letter in word.lower()])
