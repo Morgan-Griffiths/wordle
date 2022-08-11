@@ -250,7 +250,6 @@ class StateActionTransition(nn.Module):
         assert state.dim() == 4, f"expect dim of 4 got {state.shape}"
         assert action.dim() == 2, f"expect dim of 2 got {action.shape}"
         B = state.shape[0]
-
         device = state.get_device()
         if device == -1:
             device = "cpu"
@@ -347,8 +346,8 @@ class MuZeroNet(AbstractNetwork):
             self._representation = StateEncoder(config)
             self._dynamics = StateActionTransition(config)
 
-    def __call__(self,state,action):
-        return self._dynamics(state,action)
+    def __call__(self, state, action):
+        return self._dynamics(state, action)
 
     def representation(self, state):
         return self._representation(state)
