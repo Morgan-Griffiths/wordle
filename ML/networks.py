@@ -12,15 +12,10 @@ from globals import (
     DynamicOutputs,
     Tokens,
     Dims,
-    index_result_dict,
-    alphabet_dict,
 )
 from torch.distributions import Categorical
 from ML.transformer import CTransformer
 from abc import ABC, abstractmethod
-from operator import itemgetter
-
-from utils import to_tensor, return_rewards
 
 
 def hidden_init(layer):
@@ -232,7 +227,7 @@ def compute_batch(
 
 
 class StateActionTransition(nn.Module):
-    def __init__(self, config):
+    def __init__(self, mappings):
         super(StateActionTransition, self).__init__()
         self.result_emb = nn.Embedding(
             Tokens.EXACT + 1, Dims.EMBEDDING_SIZE, padding_idx=0
@@ -240,7 +235,7 @@ class StateActionTransition(nn.Module):
         self.letter_emb = nn.Embedding(28, Dims.EMBEDDING_SIZE, padding_idx=0)
         self.col_emb = nn.Embedding(5, Dims.EMBEDDING_SIZE)
         self.row_emb = nn.Embedding(6, Dims.EMBEDDING_SIZE)
-        self.config = config
+        self.mappings = mappings
         self.output_layer = mlp(280, [256, 256, 256], Dims.RESULT_STATE)
 
     def get_weights(self):
@@ -258,8 +253,8 @@ class StateActionTransition(nn.Module):
                 [
                     np.array(
                         [
-                            alphabet_dict[letter]
-                            for letter in self.config.index_to_word[a.item()]
+                            self.mappings.alphabet_dict[letter]
+                            for letter in self.mappings.index_to_word[a.item()]
                         ]
                     )
                     for a in action
@@ -334,17 +329,17 @@ class ZeroPolicy(nn.Module):
 
 
 class MuZeroNet(AbstractNetwork):
-    def __init__(self, config):
+    def __init__(self, config, mapping):
         super(MuZeroNet, self).__init__()
         self.config = config
         if config.train_on_gpu:
             self._policy = torch.nn.DataParallel(ZeroPolicy(config))
             self._representation = torch.nn.DataParallel(StateEncoder(config))
-            self._dynamics = torch.nn.DataParallel(StateActionTransition(config))
+            self._dynamics = torch.nn.DataParallel(StateActionTransition(mapping))
         else:
             self._policy = ZeroPolicy(config)
             self._representation = StateEncoder(config)
-            self._dynamics = StateActionTransition(config)
+            self._dynamics = StateActionTransition(mapping)
 
     def __call__(self, state, action):
         return self._dynamics(state, action)
