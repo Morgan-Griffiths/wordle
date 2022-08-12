@@ -1,10 +1,11 @@
 from ML.utils import reward_over_states
+from globals import Mappings
 from utils import state_transition
 import torch
 import numpy as np
 
 
-def test_state_transition():
+def test_state_transition(mappings: Mappings):
     state = np.array(
         [
             [
@@ -19,7 +20,7 @@ def test_state_transition():
     )
     result = np.array([2, 1, 3, 2, 1])
     word = "abcde"
-    next_state = state_transition(state, word, result)
+    next_state = state_transition(state, word, result, mappings)
     validation = np.array(
         [
             [
@@ -36,7 +37,7 @@ def test_state_transition():
     assert np.array_equal(next_state, validation)
 
 
-def test_state_transition2():
+def test_state_transition2(mappings):
     state = np.array(
         [
             [
@@ -51,7 +52,7 @@ def test_state_transition2():
     )
     result = np.array([2, 1, 3, 2, 1])
     word = "abcde"
-    next_state = state_transition(state, word, result)
+    next_state = state_transition(state, word, result, mappings)
     validation = np.array(
         [
             [
@@ -72,7 +73,7 @@ def test_reward():
     last_turns = torch.tensor([0])[:, None]
     # shape (1,1)
     rewards = reward_over_states(last_turns)
-    validation = torch.zeros((5, 243))
+    validation = torch.zeros((1, 243))
     validation[:, -1] = 1
     print(validation.shape, rewards.shape)
     assert torch.equal(rewards, validation)

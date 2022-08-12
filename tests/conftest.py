@@ -2,7 +2,7 @@ import pytest
 from config import Config
 from wordle import Wordle
 from ML.networks import MuZeroNet
-from globals import AgentData, Dims, State
+from globals import AgentData, Dims, State, Mappings
 from numpy import zeros
 from MCTS_mu import MCTS
 from MCTS_optimized import MCTS_dict
@@ -32,16 +32,18 @@ def data_params():
 
 
 @pytest.fixture
-def env():
-    return Wordle()
+def mappings():
+    return Mappings(None)
+
+
+@pytest.fixture
+def env(mappings):
+    return Wordle(mappings)
 
 
 @pytest.fixture
 def config():
     config = Config()
-    env = Wordle(word_restriction=config.word_restriction)
-    config.word_to_index = env.dictionary_word_to_index
-    config.index_to_word = env.dictionary_index_to_word
     return config
 
 
@@ -51,8 +53,9 @@ def fake_input():
 
 
 @pytest.fixture
-def mu_agent(config):
-    return MuZeroNet(config)
+def mu_agent(config: Config):
+    mappings = Mappings(config.word_restriction)
+    return MuZeroNet(config, mappings)
 
 
 @pytest.fixture

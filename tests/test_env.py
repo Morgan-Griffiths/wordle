@@ -1,47 +1,47 @@
 from tokenize import Token
-from globals import Embeddings, Results, Tokens, alphabet_dict, State
+from globals import Embeddings, Mappings, Tokens, State
 import numpy as np
 
 from wordle import Wordle
 
 
-def test_init(env):
+def test_init(env: Wordle):
     assert len(env.word) == 5
     assert env.turn == 0
-    assert len(env.alphabet) == 26
+    assert len(env.alphabet) == 27
     assert isinstance(env.alphabet, dict)
     assert isinstance(env.word, str)
 
 
-def test_state(env: Wordle):
-    env.word = "RAPHE"
-    assert np.array_equal(env.state, np.zeros(State.SHAPE))
-    state, rewards, done = env.step("HELLO")
-    comparison_state = np.zeros(State.SHAPE)
+def test_state(env: Wordle, mappings: Mappings):
+    env.word = "raphe"
+    assert np.array_equal(env.state, np.zeros(State.SHAPE, dtype=np.int8))
+    state, rewards, done = env.step("hello")
+    comparison_state = np.zeros(State.SHAPE, dtype=np.int8)
     turn = 0
-    comparison_state[turn, 0, Embeddings.LETTER] = alphabet_dict["H"]
+    comparison_state[turn, 0, Embeddings.LETTER] = mappings.alphabet_dict["h"]
     comparison_state[turn, 0, Embeddings.RESULT] = Tokens.CONTAINED
-    comparison_state[turn, 1, Embeddings.LETTER] = alphabet_dict["E"]
+    comparison_state[turn, 1, Embeddings.LETTER] = mappings.alphabet_dict["e"]
     comparison_state[turn, 1, Embeddings.RESULT] = Tokens.CONTAINED
-    comparison_state[turn, 2, Embeddings.LETTER] = alphabet_dict["L"]
+    comparison_state[turn, 2, Embeddings.LETTER] = mappings.alphabet_dict["l"]
     comparison_state[turn, 2, Embeddings.RESULT] = Tokens.MISSING
-    comparison_state[turn, 3, Embeddings.LETTER] = alphabet_dict["L"]
+    comparison_state[turn, 3, Embeddings.LETTER] = mappings.alphabet_dict["l"]
     comparison_state[turn, 3, Embeddings.RESULT] = Tokens.MISSING
-    comparison_state[turn, 4, Embeddings.LETTER] = alphabet_dict["O"]
+    comparison_state[turn, 4, Embeddings.LETTER] = mappings.alphabet_dict["o"]
     comparison_state[turn, 4, Embeddings.RESULT] = Tokens.MISSING
     assert np.array_equal(env.state, comparison_state)
-    state, rewards, done = env.step("RAPER")
+    state, rewards, done = env.step("wrath")
     turn = 1
-    comparison_state[turn, 0, Embeddings.LETTER] = alphabet_dict["R"]
-    comparison_state[turn, 0, Embeddings.RESULT] = Tokens.EXACT
-    comparison_state[turn, 1, Embeddings.LETTER] = alphabet_dict["A"]
-    comparison_state[turn, 1, Embeddings.RESULT] = Tokens.EXACT
-    comparison_state[turn, 2, Embeddings.LETTER] = alphabet_dict["P"]
-    comparison_state[turn, 2, Embeddings.RESULT] = Tokens.EXACT
-    comparison_state[turn, 3, Embeddings.LETTER] = alphabet_dict["E"]
-    comparison_state[turn, 3, Embeddings.RESULT] = Tokens.CONTAINED
-    comparison_state[turn, 4, Embeddings.LETTER] = alphabet_dict["R"]
-    comparison_state[turn, 4, Embeddings.RESULT] = Tokens.MISSING
+    comparison_state[turn, 0, Embeddings.LETTER] = mappings.alphabet_dict["w"]
+    comparison_state[turn, 0, Embeddings.RESULT] = Tokens.MISSING
+    comparison_state[turn, 1, Embeddings.LETTER] = mappings.alphabet_dict["r"]
+    comparison_state[turn, 1, Embeddings.RESULT] = Tokens.CONTAINED
+    comparison_state[turn, 2, Embeddings.LETTER] = mappings.alphabet_dict["a"]
+    comparison_state[turn, 2, Embeddings.RESULT] = Tokens.CONTAINED
+    comparison_state[turn, 3, Embeddings.LETTER] = mappings.alphabet_dict["t"]
+    comparison_state[turn, 3, Embeddings.RESULT] = Tokens.MISSING
+    comparison_state[turn, 4, Embeddings.LETTER] = mappings.alphabet_dict["h"]
+    comparison_state[turn, 4, Embeddings.RESULT] = Tokens.CONTAINED
     assert np.array_equal(env.state, comparison_state)
 
 
@@ -56,118 +56,118 @@ def test_state(env: Wordle):
 
 
 def test_rewards(env):
-    env.word = "HELLO"
-    _, rewards, done = env.step("HELLO")
+    env.word = "hello"
+    _, rewards, done = env.step("hello")
     assert rewards == 1
     env.reset()
-    env.word = "HELLO"
-    _, rewards, done = env.step("WORLD")
-    _, rewards, done = env.step("HELLO")
-    assert rewards == 0.95
+    env.word = "hello"
+    _, rewards, done = env.step("world")
+    _, rewards, done = env.step("hello")
+    assert rewards == 1
     env.reset()
-    env.word = "HELLO"
-    _, rewards, done = env.step("WORLD")
-    _, rewards, done = env.step("WORLD")
-    _, rewards, done = env.step("HELLO")
-    assert rewards == 0.90
+    env.word = "hello"
+    _, rewards, done = env.step("world")
+    _, rewards, done = env.step("world")
+    _, rewards, done = env.step("hello")
+    assert rewards == 1
     env.reset()
-    env.word = "HELLO"
-    _, rewards, done = env.step("WORLD")
-    _, rewards, done = env.step("WORLD")
-    _, rewards, done = env.step("WORLD")
-    _, rewards, done = env.step("HELLO")
-    assert rewards == 0.85
+    env.word = "hello"
+    _, rewards, done = env.step("world")
+    _, rewards, done = env.step("world")
+    _, rewards, done = env.step("world")
+    _, rewards, done = env.step("hello")
+    assert rewards == 1
     env.reset()
-    env.word = "HELLO"
-    _, rewards, done = env.step("WORLD")
-    _, rewards, done = env.step("WORLD")
-    _, rewards, done = env.step("WORLD")
-    _, rewards, done = env.step("WORLD")
-    _, rewards, done = env.step("HELLO")
-    assert rewards == 0.80
+    env.word = "hello"
+    _, rewards, done = env.step("world")
+    _, rewards, done = env.step("world")
+    _, rewards, done = env.step("world")
+    _, rewards, done = env.step("world")
+    _, rewards, done = env.step("hello")
+    assert rewards == 1
     env.reset()
-    env.word = "HELLO"
-    _, rewards, done = env.step("WORLD")
-    _, rewards, done = env.step("WORLD")
-    _, rewards, done = env.step("WORLD")
-    _, rewards, done = env.step("WORLD")
-    _, rewards, done = env.step("WORLD")
-    _, rewards, done = env.step("HELLO")
-    assert rewards == 0.75
+    env.word = "hello"
+    _, rewards, done = env.step("world")
+    _, rewards, done = env.step("world")
+    _, rewards, done = env.step("world")
+    _, rewards, done = env.step("world")
+    _, rewards, done = env.step("world")
+    _, rewards, done = env.step("hello")
+    assert rewards == 1
 
 
 def test_success(env):
-    env.word = "HELLO"
-    _, rewards, done = env.step("SHIRE")
+    env.word = "hello"
+    _, rewards, done = env.step("shire")
     assert done == False
     assert rewards == 0
     assert env.turn == 1
-    assert env.alphabet["S"] == 1
-    assert env.alphabet["H"] == 2
-    assert env.alphabet["I"] == 1
-    assert env.alphabet["R"] == 1
-    assert env.alphabet["E"] == 2
-    _, rewards, done = env.step("HAPPY")
+    assert env.alphabet["s"] == 1
+    assert env.alphabet["h"] == 2
+    assert env.alphabet["i"] == 1
+    assert env.alphabet["r"] == 1
+    assert env.alphabet["e"] == 2
+    _, rewards, done = env.step("happy")
     assert done == False
     assert rewards == 0
     assert env.turn == 2
-    assert env.alphabet["H"] == 3
-    assert env.alphabet["A"] == 1
-    assert env.alphabet["P"] == 1
-    assert env.alphabet["P"] == 1
-    assert env.alphabet["Y"] == 1
-    _, rewards, done = env.step("WORDS")
+    assert env.alphabet["h"] == 3
+    assert env.alphabet["a"] == 1
+    assert env.alphabet["p"] == 1
+    assert env.alphabet["p"] == 1
+    assert env.alphabet["y"] == 1
+    _, rewards, done = env.step("zebra")
     assert done == False
     assert rewards == 0
     assert env.turn == 3
-    assert env.alphabet["W"] == 1
-    assert env.alphabet["O"] == 2
-    assert env.alphabet["R"] == 1
-    assert env.alphabet["D"] == 1
-    assert env.alphabet["S"] == 1
-    _, rewards, done = env.step("WORLD")
+    assert env.alphabet["z"] == 1
+    assert env.alphabet["e"] == 3
+    assert env.alphabet["b"] == 1
+    assert env.alphabet["r"] == 1
+    assert env.alphabet["a"] == 1
+    _, rewards, done = env.step("world")
     assert done == False
     assert rewards == 0
     assert env.turn == 4
-    assert env.alphabet["W"] == 1
-    assert env.alphabet["O"] == 2
-    assert env.alphabet["R"] == 1
-    assert env.alphabet["L"] == 3
-    assert env.alphabet["D"] == 1
-    _, rewards, done = env.step("Hello")
+    assert env.alphabet["w"] == 1
+    assert env.alphabet["o"] == 2
+    assert env.alphabet["r"] == 1
+    assert env.alphabet["l"] == 3
+    assert env.alphabet["d"] == 1
+    _, rewards, done = env.step("hello")
     assert done == True
-    assert rewards == 0.80
+    assert rewards == 1
     assert env.turn == 5
-    assert env.alphabet["H"] == 3
-    assert env.alphabet["E"] == 3
-    assert env.alphabet["L"] == 3
-    assert env.alphabet["L"] == 3
-    assert env.alphabet["O"] == 3
+    assert env.alphabet["h"] == 3
+    assert env.alphabet["e"] == 3
+    assert env.alphabet["l"] == 3
+    assert env.alphabet["l"] == 3
+    assert env.alphabet["o"] == 3
 
 
 def test_fail(env):
-    env.word = "HELLO"
-    _, rewards, done = env.step("SHIRE")
+    env.word = "hello"
+    _, rewards, done = env.step("shire")
     assert done == False
     assert rewards == 0
     assert env.turn == 1
-    _, rewards, done = env.step("HAPPY")
+    _, rewards, done = env.step("happy")
     assert done == False
     assert rewards == 0
     assert env.turn == 2
-    _, rewards, done = env.step("WORDS")
+    _, rewards, done = env.step("zebra")
     assert done == False
     assert rewards == 0
     assert env.turn == 3
-    _, rewards, done = env.step("WORLD")
+    _, rewards, done = env.step("world")
     assert done == False
     assert rewards == 0
     assert env.turn == 4
-    _, rewards, done = env.step("WORLD")
+    _, rewards, done = env.step("world")
     assert done == False
     assert rewards == 0
     assert env.turn == 5
-    _, rewards, done = env.step("WORLD")
+    _, rewards, done = env.step("world")
     assert done == True
     assert rewards == -1
     assert env.turn == 6
