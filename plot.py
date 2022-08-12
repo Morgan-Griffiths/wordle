@@ -1,7 +1,6 @@
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import os
-import numpy as np
 
 COLORS = list(mcolors.TABLEAU_COLORS)
 

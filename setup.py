@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 Path("logs").mkdir(parents=True, exist_ok=True)
