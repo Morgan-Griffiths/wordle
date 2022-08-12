@@ -28,8 +28,6 @@ class Config:
     L2 = 0.1
     # WORDLE
     word_restriction = None
-    word_to_index = {}
-    index_to_word = {}
     # PER BUFFER
     batch_size = 4096
     num_unroll_steps = 6
