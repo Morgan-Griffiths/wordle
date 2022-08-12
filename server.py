@@ -1,22 +1,19 @@
-from multiprocessing.sharedctypes import Value
 import os
-import copy
 import json
 import logging
 import numpy as np
+import torch
 from torch import set_grad_enabled
 from torch import load
 from torch import device as D
-from collections import defaultdict
-from MCTS_mu import MCTS
-from ML.networks import MuZeroNet
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+from MCTS_mu import MCTS
+from ML.networks import MuZeroNet
 from ML.utils import strip_module
-from globals import PolicyOutputs
+from globals import PolicyOutputs, Mappings
 from wordle import Wordle
 from config import Config
-import torch
 
 """
 API for wordle frontend
@@ -28,10 +25,9 @@ class API(object):
         self.seed = 1458
         self.config = Config()
         self.config.num_simulations = self.config.action_space * 5
+        self.mappings = Mappings(self.config.word_restriction)
         self.env = Wordle(word_restriction=self.config.action_space)
-        self.config.word_to_index = self.env.dictionary_word_to_index
-        self.config.index_to_word = self.env.dictionary_index_to_word
-        self.model = MuZeroNet(self.config)
+        self.model = MuZeroNet(self.config, self.mappings)
         self.load_model(self.model, self.config.production_path)
         self.reset()
 

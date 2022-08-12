@@ -6,7 +6,6 @@ from torch import optim
 import numpy as np
 from globals import index_result_dict, PolicyOutputs, CHECKPOINT
 from ray_files.replay_buffer import ReplayBuffer
-from experiments.generate_data import load_data
 from experiments.globals import actionSpace, DataTypes, NetworkConfig, dataMapping
 from torch.nn import SmoothL1Loss
 from config import Config

@@ -3,28 +3,28 @@ import math
 import pathlib
 import pickle
 import time
-import torch.multiprocessing as mp
 from config import Config
-from ray_files.utils import CPUActor
-from ray_files.validate_model import ValidateModel
 from wordle import Wordle
-from globals import CHECKPOINT
-import torch
+from globals import CHECKPOINT, Mappings
 import ray
 import numpy as np
+
+from ray_files.utils import CPUActor
+from ray_files.validate_model import ValidateModel
 from ray_files.trainer import Trainer
 from ray_files.shared_storage import SharedStorage
 from ray_files.replay_buffer import ReplayBuffer, Reanalyse
 from ray_files.self_play import SelfPlay
 from torch.utils.tensorboard import SummaryWriter
+import torch.multiprocessing as mp
+import torch
 
 
 class MuZero:
     def __init__(self, config):
         self.config = config
-        self.env = Wordle(word_restriction=self.config.word_restriction)
-        self.config.word_to_index = self.env.dictionary_word_to_index
-        self.config.index_to_word = self.env.dictionary_index_to_word
+        self.mappings = Mappings(config.word_restriction)
+        self.env = Wordle(self.mapping)
         np.random.seed(self.config.seed)
         torch.manual_seed(self.config.seed)
         if config.train_on_gpu:
@@ -41,7 +41,7 @@ class MuZero:
         self.checkpoint = copy.copy(CHECKPOINT)
         self.replay_buffer = {}
         cpu_actor = CPUActor.remote()
-        cpu_weights = cpu_actor.get_initial_weights.remote(self.config)
+        cpu_weights = cpu_actor.get_initial_weights.remote(self.config, self.mappings)
         self.checkpoint["weights"], self.summary = copy.deepcopy(ray.get(cpu_weights))
 
         # Workers
@@ -502,12 +502,13 @@ def load_model_menu(muzero):
 def model_update_step(model, buffer_info):
     config = Config()
     config.train_on_gpu = False
+    mappings = Mappings(config.word_restriction)
     checkpoint = copy.copy(CHECKPOINT)
     checkpoint["num_played_steps"] = buffer_info["num_played_steps"]
     checkpoint["num_played_games"] = buffer_info["num_played_games"]
     checkpoint["num_reanalysed_games"] = buffer_info["num_reanalysed_games"]
     cpu_actor = CPUActor.remote()
-    cpu_weights = cpu_actor.get_initial_weights.remote(config)
+    cpu_weights = cpu_actor.get_initial_weights.remote(config, mappings)
     checkpoint["weights"], _ = copy.deepcopy(ray.get(cpu_weights))
     per_buffer = ReplayBuffer.remote(checkpoint, buffer_info["buffer"], config)
     trainer = Trainer.options(num_cpus=0, num_gpus=0,).remote(
@@ -601,7 +602,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    print('args',args)
+    print("args", args)
     # main(args.resume, args.model, args.epochs, args.train_type)
     config = Config()
     config.load_dynamic_weights = True

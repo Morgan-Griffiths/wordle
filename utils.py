@@ -1,27 +1,15 @@
-from typing import NamedTuple
 import torch
 import copy
 import numpy as np
 from config import Config
-from globals import (
-    AgentData,
-    Dims,
-    Embeddings,
-    Outputs,
-    Results,
-    dictionary_word_to_index,
-    result_index_dict,
-    alphabet_dict,
-    NetworkOutput,
-)
+from globals import Dims, Embeddings, Mappings
 from prettytable import PrettyTable
-from scipy.stats import entropy
 
 
-def result_from_state(turn, state):
+def result_from_state(turn, state, mappings: Mappings):
     try:
         result = state[turn][:, Embeddings.RESULT]
-        return result_index_dict[tuple(result)]
+        return mappings.result_index_dict[tuple(result)]
     except:
         return -1
 
@@ -35,10 +23,10 @@ def debug(func):
 
 
 def state_transition(
-    state: np.array, word: str, result: np.array
+    state: np.array, word: str, result: np.array, mappings: Mappings
 ) -> np.array:
     new_state = copy.deepcopy(state)
-    encoded_word = np.array([alphabet_dict[letter] for letter in word.lower()])
+    encoded_word = np.array([mappings.alphabet_dict[letter] for letter in word.lower()])
     mask = np.where(new_state == 0)[1]
     turn = min(mask)
     new_state[:, turn, :, Embeddings.LETTER] = encoded_word
@@ -54,67 +42,8 @@ def load_n_letter_words(n):
     return cleaned
 
 
-def return_rewards(turn: int, reward: float):
-    sign = -1 if reward < 0 else 1
-    return list(reversed([torch.Tensor([0.95 ** num * sign]) for num in range(turn)]))
-
-
 def to_tensor(state):
     return torch.as_tensor(state, dtype=torch.int32)
-
-
-def return_result_params() -> dict:
-    return {
-        Results.LOSSES: [],
-        Results.VALUES: [],
-        Results.ACTION_PROBS: [],
-        Results.ACTIONS: [],
-        Results.TARGETS: [],
-    }
-
-
-def return_data_params():
-    return {
-        AgentData.STATES: [],
-        AgentData.ACTIONS: [],
-        AgentData.ACTION_PROB: [],
-        AgentData.ACTION_PROBS: [],
-        AgentData.VALUES: [],
-        AgentData.REWARDS: [],
-        AgentData.DONES: [],
-        AgentData.TARGETS: [],
-    }
-
-
-def return_permutations():  # 3^5 = 243
-    results = []
-    for a in range(1, 4):
-        for b in range(1, 4):
-            for c in range(1, 4):
-                for d in range(1, 4):
-                    for e in range(1, 4):
-                        results.append((a, b, c, d, e))
-    return results
-
-
-def store_state(
-    data_params: dict,
-    state: np.array,
-    done: bool,
-    target: str,
-) -> dict:
-    data_params[AgentData.STATES].append(to_tensor(state))
-    data_params[AgentData.DONES].append(to_tensor(done))
-    data_params[AgentData.TARGETS].append(to_tensor(dictionary_word_to_index[target]))
-    return data_params
-
-
-def store_outputs(data_params: dict, outputs: dict) -> dict:
-    data_params[AgentData.ACTION_PROBS].append(outputs[Outputs.ACTION_PROBS])
-    data_params[AgentData.ACTION_PROB].append(outputs[Outputs.ACTION_PROB])
-    data_params[AgentData.VALUES].append(outputs[Outputs.VALUES])
-    data_params[AgentData.ACTIONS].append(outputs[Outputs.ACTION])
-    return data_params
 
 
 def count_parameters(model):
@@ -129,55 +58,6 @@ def count_parameters(model):
     print(table)
     print(f"Total Trainable Params: {total_params}")
     return total_params
-
-
-def shape_values_to_q_values(values, actions):
-    data = np.zeros((len(values), Dims.OUTPUT))
-    i = 0
-    for value, action in zip(values, actions):
-        data[i, action] = value
-        i += 1
-    return data
-
-
-def select_action(node, temperature=1, deterministic=True):
-    visit_counts = [
-        (child.visit_count, action) for action, child in node.children.items()
-    ]
-    action_probs = [
-        visit_count_i ** (1 / temperature) for visit_count_i, _ in visit_counts
-    ]
-    total_count = sum(action_probs)
-    action_probs = [x / total_count for x in action_probs]
-    if deterministic:
-        action_pos = np.argmax([v for v, _ in visit_counts])
-    else:
-        action_pos = np.random.choice(len(visit_counts), p=action_probs)
-
-    count_entropy = entropy(action_probs, base=2)
-    return visit_counts[action_pos][1], count_entropy
-
-
-class DynamicsStorage:
-    def __init__(self):
-        # state
-        self.rewards = []
-        self.result_targets = []
-        # network
-        self.projected_rewards = []
-        self.projected_results = []
-
-    def store_result_target(self, state, turn):
-        if turn > 0:
-            target = state[turn - 1, :, 1].astype(int)
-            self.result_targets.append(to_tensor(result_index_dict[tuple(target)]))
-
-    def store_rewards(self, rewards):
-        self.rewards = rewards
-
-    def store_outputs(self, projected_rewards, projected_results):
-        self.projected_rewards.append(projected_rewards)
-        self.projected_results.append(projected_results)
 
 
 class DataStorage:
@@ -196,26 +76,6 @@ class DataStorage:
         self.projected_reward = []
         self.projected_rewards = []
         self.projected_results = []
-
-    def store_state(self, state, done, word, turn):
-        self.states.append(to_tensor(state))
-        self.dones.append(to_tensor(done))
-        self.word_targets.append(to_tensor(dictionary_word_to_index[word]))
-        if turn > 0:
-            target = state[turn - 1, :, 1].astype(int)
-            self.result_targets.append(to_tensor(result_index_dict[tuple(target)]))
-
-    def store_outputs(self, network_outputs: NetworkOutput, target_action):
-        self.policy_logits.append(network_outputs.policy_logits)
-        self.actions.append(to_tensor(network_outputs.action))
-        self.values.append(network_outputs.value)
-        self.projected_reward.append(network_outputs.reward)
-        self.projected_rewards.append(network_outputs.rewards)
-        self.projected_results.append(network_outputs.result_logits)
-        self.action_targets.append(to_tensor(target_action).unsqueeze(0))
-
-    def store_rewards(self, rewards):
-        self.rewards.extend(rewards)
 
 
 class Stats:
@@ -329,12 +189,3 @@ class Stats:
 
     def return_states(self, index):
         return self.states[index:]
-
-    def store_state(self, state):
-        self.states.append(to_tensor(state))
-
-    def store_action(self, action):
-        self.actions.append(to_tensor(action))
-
-    def store_rewards(self, rewards):
-        self.rewards.extend(rewards)

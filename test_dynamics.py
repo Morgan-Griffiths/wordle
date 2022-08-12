@@ -5,20 +5,15 @@ import ray
 import torch
 from torch import optim
 import numpy as np
-from ML.networks import MuZeroNet, TestNet, StateActionTransition
+from ML.networks import StateActionTransition
 from config import Config
-from globals import DynamicOutputs, PolicyOutputs, index_result_dict, CHECKPOINT
-from experiments.generate_data import load_data
+from globals import DynamicOutputs, index_result_dict, CHECKPOINT
 from experiments.globals import (
     LearningCategories,
-    actionSpace,
-    DataTypes,
     NetworkConfig,
-    dataMapping,
 )
-from collections import Counter
 import torch.nn.functional as F
-from main import MuZero, load_replay_buffer
+from main import load_replay_buffer
 from ray_files.replay_buffer import ReplayBuffer
 from wordle import Wordle
 
