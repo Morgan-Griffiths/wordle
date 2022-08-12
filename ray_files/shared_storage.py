@@ -8,7 +8,7 @@ from pathlib import Path
 @ray.remote
 class SharedStorage:
     """
-    Class which run in a dedicated thread to store the network weights and some information.
+    Run the class in a dedicated thread to store the network weights and additional information.
     """
 
     def __init__(self, checkpoint, config):
@@ -16,6 +16,7 @@ class SharedStorage:
         self.current_checkpoint = copy.deepcopy(checkpoint)
         # print("IDS",ray.get_gpu_ids())
         # print('CUDA',torch.cuda.is_available())
+
     def save_checkpoint(self, path=None):
         if not path:
             path = os.path.join(self.config.weights_path, "model.checkpoint")

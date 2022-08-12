@@ -12,7 +12,7 @@ from globals import DynamicOutputs, PolicyOutputs, State
 @ray.remote
 class Trainer:
     """
-    Class which run in a dedicated thread to train a neural network and save it
+    Run the class in a dedicated thread to train a neural network and save it
     in the shared storage.
     """
 

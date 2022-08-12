@@ -13,7 +13,7 @@ from globals import Embeddings, PolicyOutputs, result_index_dict, State
 @ray.remote
 class ReplayBuffer:
     """
-    Class which run in a dedicated thread to store played games and generate batch.
+    Run the class in a dedicated thread to store played games to generate a batch.
     """
 
     def __init__(self, initial_checkpoint, initial_buffer, config):
