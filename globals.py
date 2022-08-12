@@ -155,42 +155,68 @@ CHECKPOINT = {
     "terminate": False,
 }
 
-with open("data/allowed_words.txt", "r") as f:
-    wordle_dictionary = f.readlines()
-
-with open("data/possible_words.txt", "r") as f:
-    word_targets_dictionary = f.readlines()
-
-permutations = []  # zero padded
-for a in range(1, 4):
-    for b in range(1, 4):
-        for c in range(1, 4):
-            for d in range(1, 4):
-                for e in range(1, 4):
-                    permutations.append((a, b, c, d, e))
-result_index_dict = {dist: i for i, dist in enumerate(permutations)}
-index_result_dict = {i: dist for dist, i in result_index_dict.items()}
-target_dictionary = [word.strip() for word in word_targets_dictionary]
-dictionary = [word.strip() for word in wordle_dictionary]
-dictionary_arr = np.vstack([list(word) for word in dictionary])
-# dictionary = [
-#     "MOUNT",
-#     "HELLO",
-#     "NIXED",
-#     "AAHED",
-#     "HELMS",
-# ]
-dictionary_word_to_index = {word: i for i, word in enumerate(dictionary, 1)}
-dictionary_index_to_word = {i: word for i, word in enumerate(dictionary, 1)}
-dictionary_index_to_word[0] = "-----"
-dictionary_word_to_index["-----"] = 0
-# print(dictionary)
 alphabet = "".join("-abcdefghijklmnopqrstuvwxzy".lower().split())
-alphabet_dict = {letter: i for i, letter in enumerate(alphabet)}
-index_to_letter_dict = {i: letter for i, letter in enumerate(alphabet)}
-readable_result_dict = {
-    Tokens.UNKNOWN: "UNKNOWN",
-    Tokens.MISSING: "MISSING",
-    Tokens.CONTAINED: "CONTAINED",
-    Tokens.EXACT: "EXACT",
-}
+
+
+class Mappings:
+    """Class to hold wordle result and word mappings"""
+
+    def __init__(self, word_restriction=None):
+        # RESULTS
+        permutations = []  # zero padded
+        for a in range(1, 4):
+            for b in range(1, 4):
+                for c in range(1, 4):
+                    for d in range(1, 4):
+                        for e in range(1, 4):
+                            permutations.append((a, b, c, d, e))
+        self.result_index_dict = {dist: i for i, dist in enumerate(permutations)}
+        self.index_result_dict = {i: dist for dist, i in self.result_index_dict.items()}
+
+        # WORDS
+        with open("data/allowed_words.txt", "r") as f:
+            wordle_dictionary = f.readlines()
+        self.dictionary = [word.strip() for word in wordle_dictionary]
+
+        with open("data/possible_words.txt", "r") as f:
+            word_targets_dictionary = f.readlines()
+        self.target_dictionary = [word.strip() for word in word_targets_dictionary]
+
+        if word_restriction is not None:
+            step_size = len(self.dictionary) // word_restriction
+            self.dictionary_in_use = self.dictionary[::step_size][:word_restriction]
+        else:
+            self.dictionary_in_use = self.target_dictionary
+
+        self.dictionary_word_to_index = {
+            word: i for i, word in enumerate(self.dictionary_in_use, 1)
+        }
+        self.dictionary_index_to_word = {
+            i: word for i, word in enumerate(self.dictionary_in_use, 1)
+        }
+        self.dictionary_index_to_word[0] = "-----"
+        self.dictionary_word_to_index["-----"] = 0
+        self.readable_result_dict = {
+            Tokens.UNKNOWN: "UNKNOWN",
+            Tokens.MISSING: "MISSING",
+            Tokens.CONTAINED: "CONTAINED",
+            Tokens.EXACT: "EXACT",
+        }
+
+        # LETTERS
+        self.alphabet_dict = {letter: i for i, letter in enumerate(alphabet)}
+        self.index_to_letter_dict = {
+            i: letter for i, letter in enumerate(alphabet)
+        }
+
+    def action_to_string(self, action: int):
+        try:
+            return self.dictionary_index_to_word[action]
+        except:
+            raise ValueError(f"Invalid action {action}")
+
+    def word_to_action(self, word: str):
+        try:
+            return self.dictionary_word_to_index[word.lower()]
+        except:
+            raise ValueError(f"Invalid word {word}")
