@@ -3,28 +3,27 @@ import math
 import pathlib
 import pickle
 import time
-import torch.multiprocessing as mp
-from config import Config
-from ray_files.utils import CPUActor
-from ray_files.validate_model import ValidateModel
-from wordle import Wordle
-from globals import CHECKPOINT
 import torch
+import torch.multiprocessing as mp
+from torch.utils.tensorboard import SummaryWriter
 import ray
 import numpy as np
+
+from config import Config
+from wordle import Wordle
+from globals import CHECKPOINT, Mappings
+from ray_files.utils import CPUActor
 from ray_files.trainer import Trainer
 from ray_files.shared_storage import SharedStorage
 from ray_files.replay_buffer import ReplayBuffer, Reanalyse
 from ray_files.self_play import SelfPlay
-from torch.utils.tensorboard import SummaryWriter
 
 
 class MuDyno:
     def __init__(self, config):
         self.config = config
-        self.env = Wordle(word_restriction=self.config.word_restriction)
-        self.config.word_to_index = self.env.dictionary_word_to_index
-        self.config.index_to_word = self.env.dictionary_index_to_word
+        self.mappings = Mappings(config.word_restriction)
+        self.env = Wordle(self.mappings)
         np.random.seed(self.config.seed)
         torch.manual_seed(self.config.seed)
         if config.train_on_gpu:
@@ -41,7 +40,7 @@ class MuDyno:
         self.checkpoint = copy.copy(CHECKPOINT)
         self.replay_buffer = {}
         cpu_actor = CPUActor.remote()
-        cpu_weights = cpu_actor.get_initial_weights.remote(self.config)
+        cpu_weights = cpu_actor.get_initial_weights.remote(self.config, self.mappings)
         self.checkpoint["weights"], self.summary = copy.deepcopy(ray.get(cpu_weights))
 
         # Workers
@@ -128,7 +127,6 @@ class MuDyno:
             self.logging_loop(
                 num_gpus_per_worker if self.config.selfplay_on_gpu else 0,
             )
-
 
     def logging_loop(self, num_gpus):
         """
@@ -305,17 +303,25 @@ if __name__ == "__main__":
     parser.add_argument(
         "--resume", help="resume training from an earlier run", action="store_true"
     )
-    parser.add_argument(
-        "-lr", help="learning rate", type=float, default=3e-3
-    )
+    parser.add_argument("-lr", help="learning rate", type=float, default=3e-3)
     parser.add_argument(
         "-v", dest="validate", help="validate the trained network", action="store_true"
     )
     parser.add_argument(
-        "-g","--games", dest="warmup_games", help="number of warmup games to play", default=2e+6,type=int
+        "-g",
+        "--games",
+        dest="warmup_games",
+        help="number of warmup games to play",
+        default=2e6,
+        type=int,
     )
     parser.add_argument(
-        "-s","--steps", dest="warmup_steps", help="number of dynamics training steps", default=1000,type=int
+        "-s",
+        "--steps",
+        dest="warmup_steps",
+        help="number of dynamics training steps",
+        default=1000,
+        type=int,
     )
     parser.add_argument(
         "--no_gpu",
@@ -329,7 +335,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    print('args',args)
+    print("args", args)
     config = Config()
     config.PER = False
     config.train_on_gpu = not args.no_gpu
