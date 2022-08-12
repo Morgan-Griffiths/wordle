@@ -1,37 +1,30 @@
-from wordle import Wordle
-from globals import Embeddings, result_index_dict
-import ray
-from MCTS_mu import GameHistory
-import tarfile
-import numpy as np
-import io
-from config import Config
-import time
-from tqdm import tqdm
-from ML.networks import MuZeroNet, StateActionTransition
-import torch
-import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
-from ray.train.callbacks import JsonLoggerCallback, TBXLoggerCallback
 from torch.nn.parallel import DistributedDataParallel as DDP
-import torch.distributed as dist
-from ray import train
-import ray.train.torch
-from ray.train import Trainer, TrainingCallback
-from torch.utils.tensorboard import SummaryWriter
+from torch.utils.data import Dataset, DataLoader
+from torch.optim.lr_scheduler import MultiStepLR
 import torch.multiprocessing as mp
+import torch.distributed as dist
+import torch.nn as nn
+import torch
+from ray.train.callbacks import JsonLoggerCallback
+from ray.train import Trainer, TrainingCallback
+from ray import train
 import os
-from prettytable import PrettyTable
-from collections import deque
-from torch.optim.lr_scheduler import MultiStepLR, StepLR
 import sys
+import numpy as np
+from tqdm import tqdm
+from collections import deque
+from prettytable import PrettyTable
+
+from globals import Embeddings, Mappings
+from ML.networks import MuZeroNet
+from ML.utils import load_weights
+from wordle import Wordle
+from config import Config
 
 
 class Storage:
-    def __init__(self, config):
-        # self.actions = zarr.zeros(shape=(config.num_warmup_games))
-        # self.states = zarr.zeros(shape=(config.num_warmup_games,6,5,2))
-        # self.labels = zarr.zeros(shape=(config.num_warmup_games))
+    def __init__(self, config, mappings):
+        self.mapping = mappings
         self.actions = np.zeros(shape=(config.num_dynamics_examples), dtype=np.uint16)
         self.states = np.zeros(
             shape=(config.num_dynamics_examples, 6, 5, 2), dtype=np.uint8
@@ -45,7 +38,7 @@ class Storage:
             if self.n >= self.max_n:
                 break
             self.actions[self.n] = action
-            self.labels[self.n] = result_index_dict[tuple(label)]
+            self.labels[self.n] = self.mapping.result_index_dict[tuple(label)]
             self.states[self.n, :, :, :] = state
             self.n += 1
         return self.n >= self.max_n
@@ -83,9 +76,10 @@ def randomly_sample_games(shared_storage, config):
 
 def create_dataset():
     config = Config()
+    mappings = Mappings(config.word_restriction)
     config.num_dynamics_examples = 30000000
     config.num_workers = 2
-    shared_storage = Storage(config)
+    shared_storage = Storage(config, mappings)
     randomly_sample_games(shared_storage, config)
     shared_storage.save_state()
 
@@ -159,9 +153,7 @@ class DynamicInMemory(Dataset):
         self.labels = np.load("data/labels.npy")
         self.actions = np.load("data/actions.npy")
         self.states = np.load("data/states.npy")
-        # self.labels = self.labels.astype(np.int8)
         self.actions = self.actions.astype(np.int16)
-        # self.states = self.states.astype(np.int8)
 
     def __len__(self):
         return len(self.labels)
@@ -176,9 +168,6 @@ class DynamicInMemory(Dataset):
 def train_epoch(dataloader, model, loss_fn, optimizer):
     losses = []
     for action, state, label in dataloader:
-        # state = state.squeeze(1).long().to(device)
-        # label = label.squeeze(-1).to(device)
-        # action = action.to(device)
         state = state.squeeze(1).long()
         label = label.squeeze(-1)
         print(action.shape, state.shape, label.shape)
@@ -194,13 +183,13 @@ def train_epoch(dataloader, model, loss_fn, optimizer):
     return {"loss": losses}
 
 
-def train_func(config):
+def train_func(config, mapping):
     training_data = DynamicInMemory()
     train_loader = DataLoader(training_data, batch_size=2048, shuffle=True)
     train_loader = train.torch.prepare_data_loader(train_loader)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     config.train_on_gpu = False
-    model = MuZeroNet(config)
+    model = MuZeroNet(config, mapping)
     # model.set_weights(copy.deepcopy(initial_checkpoint["weights"]))
     # model.to(device)
     model = train.torch.prepare_model(model)
@@ -238,12 +227,13 @@ def train_linear(num_workers=2, use_gpu=False):
         logdir="./ray_results",
     )
     config = Config()
-    env = Wordle(word_restriction=config.word_restriction)
-    config.word_to_index = env.dictionary_word_to_index
-    config.index_to_word = env.dictionary_index_to_word
+    mapping = Mappings(config.word_restriction)
     trainer.start()
     results = trainer.run(
-        train_func, config, callbacks=[PrintingCallback(), JsonLoggerCallback()]
+        train_func,
+        config,
+        mapping,
+        callbacks=[PrintingCallback(), JsonLoggerCallback()],
     )
     trainer.shutdown()
 
@@ -257,9 +247,9 @@ def setup_world(rank, world_size):
     dist.init_process_group("gloo", rank=rank, world_size=world_size)
 
 
-def train_network(id, data_dict, config, training_params):
+def train_network(id, data_dict, config, mapping, training_params):
     print(f"Process {id}")
-    model = MuZeroNet(config)
+    model = MuZeroNet(config, mapping)
     if training_params["resume"]:
         print(f"Loading weights from {training_params['load_path']}")
         load_weights(model, training_params["load_path"])
@@ -346,9 +336,7 @@ def train_multi():
     world_size = max(torch.cuda.device_count(), 1)
     print(f"World size {world_size}")
     config = Config()
-    env = Wordle(word_restriction=config.word_restriction)
-    config.word_to_index = env.dictionary_word_to_index
-    config.index_to_word = env.dictionary_index_to_word
+    mapping = Mappings(config.word_restriction)
 
     training_params = {
         "resume": False,
@@ -363,6 +351,7 @@ def train_multi():
         args=(
             data_dict,
             config,
+            mapping,
             training_params,
         ),
         nprocs=world_size,
