@@ -1,23 +1,14 @@
-import collections
-from re import S
-from typing import Any
 import numpy as np
-import copy
-from ML.agents.mu_agent import MuAgent
-from globals import (
-    Dims,
-    DynamicOutputs,
-    NetworkOutput,
-    PolicyOutputs,
-    result_index_dict,
-    index_result_dict,
-)
-from utils import to_tensor, state_transition, result_from_state
-from ML.networks import MuZeroNet
-from wordle import Wordle
 import math
 import torch
-from collections import defaultdict
+
+from globals import (
+    DynamicOutputs,
+    Mappings,
+    PolicyOutputs,
+)
+from utils import state_transition
+from ML.networks import MuZeroNet
 from memory_profiler import profile
 
 """ 
@@ -163,6 +154,7 @@ class MCTS:
     def __init__(self, config) -> None:
         self.config = config
         self.epsilon = config.epsilon
+        self.mappings = Mappings(config.word_restriction)
 
     def decay_epsilon(self):
         self.epsilon = max(0, self.epsilon * 0.999)
@@ -208,7 +200,7 @@ class MCTS:
                         len(node.state_probs), p=node.state_probs
                     )  # zero padding
                     result, reward = (
-                        index_result_dict[state_choice],
+                        self.mappings.index_result_dict[state_choice],
                         node.reward_outcomes[state_choice],
                     )
                     # get previous state -> new state
@@ -242,7 +234,8 @@ class GameHistory:
     Store only usefull information of a self-play game.
     """
 
-    def __init__(self):
+    def __init__(self, mappings):
+        self.mappings = mappings
         self.result_history = []
         self.word_history = []
         self.state_history = []
@@ -287,15 +280,16 @@ class GameHistory:
         actions = np.array(actions)
         reward_targets = np.array(reward_targets)
         result_targets = [
-            torch.as_tensor(result_index_dict[tuple(res)]) for res in results
+            torch.as_tensor(self.mappings.result_index_dict[tuple(res)])
+            for res in results
         ]
 
         assert (
             len(states) == len(actions) == len(result_targets) == len(reward_targets)
         ), f"Improper lengths {print(len(states), len(actions), len(result_targets), len(reward_targets))}"
-        # np.save("states.npy", states)
-        # np.save("actions.npy", actions)
-        # np.save("reward_targets.npy", reward_targets)
+        # np.save("data/states.npy", states)
+        # np.save("data/actions.npy", actions)
+        # np.save("data/reward_targets.npy", reward_targets)
         states = torch.as_tensor(states).long()
         actions = torch.as_tensor(actions).long()
         result_targets = torch.stack(result_targets).long()

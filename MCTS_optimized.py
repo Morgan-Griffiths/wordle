@@ -1,22 +1,14 @@
-import collections
-from re import S
-from typing import Any
 import numpy as np
-import copy
-from ML.agents.mu_agent import MuAgent
-from globals import (
-    Dims,
-    DynamicOutputs,
-    NetworkOutput,
-    PolicyOutputs,
-    result_index_dict,
-    index_result_dict,
-)
-from utils import to_tensor, state_transition, result_from_state
-from ML.networks import MuZeroNet
-from wordle import Wordle
 import math
 import torch
+from globals import (
+    DynamicOutputs,
+    Mappings,
+    PolicyOutputs,
+)
+
+from utils import state_transition, result_from_state
+from ML.networks import MuZeroNet
 from collections import defaultdict
 from memory_profiler import profile
 
@@ -29,6 +21,7 @@ class MCTS_dict:
     def __init__(self, config) -> None:
         self.config = config
         self.epsilon = config.epsilon
+        self.mappings = Mappings(config.word_restriction)
         self.Nsa = defaultdict(
             lambda: 0
         )  # stores #times edge s,a was visited. R * 6 * 64 bits
@@ -108,7 +101,7 @@ class MCTS_dict:
                         len(self.Ps[s_a]), p=self.Ps[s_a]
                     )  # zero padding
                     result, reward = (
-                        index_result_dict[state_choice],
+                        self.mappings.index_result_dict[state_choice],
                         self.Rs[s_a][state_choice],
                     )
                     # get previous state -> new state
