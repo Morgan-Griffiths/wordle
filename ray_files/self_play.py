@@ -1,22 +1,15 @@
 import time
-from typing import Any
 import numpy as np
 import copy
-from MCTS_mu import MCTS, GameHistory
-from ML.agents.mu_agent import MuAgent
-from globals import (
-    Dims,
-    DynamicOutputs,
-    Embeddings,
-    NetworkOutput,
-    PolicyOutputs,
-)
-from utils import to_tensor, state_transition
-from ML.networks import MuZeroNet
-from wordle import Wordle
 import math
 import torch
 import ray
+from MCTS_mu import MCTS, GameHistory
+from globals import (
+    Embeddings,
+    NetworkOutput,
+)
+from ML.networks import MuZeroNet
 
 """ 
 MuZero MCTS:
@@ -119,9 +112,10 @@ class Node:
 
 @ray.remote
 class SelfPlay:
-    def __init__(self, initial_checkpoint, env, config, seed) -> None:
+    def __init__(self, initial_checkpoint, env, config, mappings, seed) -> None:
         self.epsilon = 0.5
         self.config = config
+        self.mappings = mappings
         self.env = env
 
         # Fix random generator seed
@@ -132,7 +126,7 @@ class SelfPlay:
         else:
             self.device = "cpu"
         # Initialize the network
-        self.model = MuZeroNet(config)
+        self.model = MuZeroNet(config, mappings)
         self.model.set_weights(copy.deepcopy(initial_checkpoint["weights"]))
         self.model.to(self.device)
         self.model.eval()
@@ -246,7 +240,7 @@ class SelfPlay:
         ) < self.config.num_warmup_games and not ray.get(
             shared_storage.get_info.remote("terminate")
         ):
-            game_history = GameHistory()
+            game_history = GameHistory(self.mappings)
             state, reward, done = env.reset()
             game_history.state_history.append(state.copy())
             game_history.word_history.append(env.word_to_action(env.word))
@@ -270,9 +264,8 @@ class SelfPlay:
                 game_history.max_actions.append(0)
             replay_buffer.save_game.remote(game_history, shared_storage)
 
-
     def play_game(self, temperature, temperature_threshold, render):
-        game_history = GameHistory()
+        game_history = GameHistory(self.mappings)
         state, reward, done = self.env.reset()
         game_history.state_history.append(state.copy())
         game_history.word_history.append(self.env.word_to_action(self.env.word))

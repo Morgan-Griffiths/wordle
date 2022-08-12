@@ -16,8 +16,9 @@ class Trainer:
     in the shared storage.
     """
 
-    def __init__(self, initial_checkpoint, config):
+    def __init__(self, initial_checkpoint, config, mapping):
         self.config = config
+        self.mapping = mapping
 
         # Fix random generator seed
         np.random.seed(self.config.seed)
@@ -27,7 +28,7 @@ class Trainer:
         else:
             self.device = "cpu"
         # Initialize the network
-        self.model = MuZeroNet(config)
+        self.model = MuZeroNet(config, mapping)
         self.model.set_weights(copy.deepcopy(initial_checkpoint["weights"]))
         self.model.to(self.device)
         self.model.train()

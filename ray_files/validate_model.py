@@ -5,9 +5,8 @@ from ML.utils import strip_module, is_net_ddp
 from globals import (
     DynamicOutputs,
     Embeddings,
+    Mappings,
     PolicyOutputs,
-    dictionary_index_to_word,
-    result_index_dict,
 )
 import numpy as np
 import ray
@@ -25,6 +24,7 @@ class ValidateModel:
         self.config = config
         self.config.add_exploration_noise = False
         self.config.train_on_gpu = False
+        self.mapping = Mappings(config.word_restriction)
         # Initialize the network
         self.model = MuZeroNet(self.config)
         self.model.set_weights(strip_module(checkpoint["weights"]))
@@ -134,7 +134,7 @@ class ValidateModel:
                         state, reward, done = env.step(chosen_word)
                         print(env.visualize_state())
                         print(f"Next state {state[env.turn-1,:,Embeddings.RESULT]}")
-                        result_index = result_index_dict[
+                        result_index = self.mapping.result_index_dict[
                             tuple(state[env.turn - 1, :, Embeddings.RESULT])
                         ]
                         print(

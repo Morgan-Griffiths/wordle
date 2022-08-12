@@ -1,5 +1,4 @@
 import copy
-import re
 import time
 
 import numpy as np
@@ -7,7 +6,7 @@ import ray
 import torch
 
 from ML.networks import MuZeroNet
-from globals import Embeddings, PolicyOutputs, result_index_dict, State
+from globals import Mappings, PolicyOutputs, State
 
 
 @ray.remote
@@ -18,6 +17,7 @@ class ReplayBuffer:
 
     def __init__(self, initial_checkpoint, initial_buffer, config):
         self.config = config
+        self.mappings = Mappings(config.word_restriction)
         self.buffer = copy.deepcopy(initial_buffer)
         self.num_played_games = initial_checkpoint["num_played_games"]
         self.num_played_steps = initial_checkpoint["num_played_steps"]
@@ -318,7 +318,9 @@ class ReplayBuffer:
         actions.append(game_history.action_history[state_index])
         word_targets.append(game_history.word_history[state_index])
         result_targets.append(
-            result_index_dict[tuple(game_history.result_history[state_index])]
+            self.mappings.result_index_dict[
+                tuple(game_history.result_history[state_index])
+            ]
         )
         # elif current_index == len(game_history.root_values):
         #     target_values.append(0)
@@ -361,15 +363,16 @@ class Reanalyse:
     See paper appendix Reanalyse.
     """
 
-    def __init__(self, initial_checkpoint, config):
+    def __init__(self, initial_checkpoint, config, mapping):
         self.config = config
+        self.mapping = mapping
 
         # Fix random generator seed
         np.random.seed(self.config.seed)
         torch.manual_seed(self.config.seed)
 
         # Initialize the network
-        self.model = MuZeroNet(self.config)
+        self.model = MuZeroNet(self.config, self.mapping)
         self.model.set_weights(initial_checkpoint["weights"])
         # self.model.to(torch.device("cuda" if self.config.reanalyse_on_gpu else "cpu")) # uncomment for gpu
         self.model.eval()
