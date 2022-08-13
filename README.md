@@ -43,7 +43,7 @@ For this agent however, we will simply be optimizing for the end result. Which w
 
 To make wordle machine digestible we have to convert the game state into numbers. If we take the following image
 
-![img](images/wordle-example.png)
+![img](wordle-example.png)
 
 Each letter is encoded via the following format. With 0 reserved for padding
 
