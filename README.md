@@ -25,6 +25,10 @@ First
 - generate games for dynamics function training
 - train the dynamics function
 - train the actor and critic via self play
+    ```python main.py``` 
+    on menu prompt enter 0
+
+
 
 ## Strategy
 
@@ -38,6 +42,47 @@ In Reenforcement Learning (RL), this is known as an imperfect information non-st
 A nice heuristic for playing Wordle is to maximize the amount of information gained per guess. This is not necessarily optimal because maximizing information on a given round, may not maximize information gained over 2 or more rounds. 
 
 For this agent however, we will simply be optimizing for the end result. Which will also solve the game in optimum average speed.
+
+## The RL Agent
+
+My approach here is modeled off of DeepMind's MuZero. It builds off previous work from DeepMind with AlphaGo and AlphaZero. A quick summary of MuZero is as follows:
+
+1. It builds an internal representation of the environment. This is called the 'Dynamics Function'. This function predicts the next state S', from the current state S, given action A. It also learns the reward function to predict the reward R.
+2. It has an encoder which takes the state S -> turns it into a hidden state H. Which is the input to the dynamics function.
+3. It has an Actor or policy network, which produces probabilities over actions given the current state S
+4. It has a Critic or value network, which produces the value of the current state V.
+5. As MuZero searches the tree, at each state the policy is queried and the probabilities are used to help select the next action. In addition there is the UCB (Upper confidance bound) algorithm which balances between exploration and exploitation. 
+
+In essence there are 4 things at play.
+1. State encoder
+2. Dynamics function
+3. Policy
+4. Critic
+
+You can read the paper [here](https://arxiv.org/pdf/1911.08265.pdf).
+### How my implementation differs
+
+A key aspect of MuZero is its use in perfect information games. In such games, the dynamics function is deterministic. For example if i show you a chess board and tell you what my next move is. You know exactly what the next board position will be. This is not the case in Wordle.
+
+Because of this, instead of outputting S', i have the dynamics function output a probability distribution over next states. And then during tree search we sample from the distribution to get S'. This complicates the MCTS function a bit because now we have two types of nodes - state nodes which store action probabilities, and action nodes which store state probabilities.
+
+**Encoder**
+I dispense with the encoder because the wordle transition function is quite simple. And have the network iterate over actual game states. Also in a Typical MuZero algorithm it can search beyond the end of the game. Because Wordle is at MOST 6 rounds, that is unnecessary here.
+
+**The dynamics function** 
+Outputs a probability distribution over results. There are 243 (5 squares, 3 possible outcomes for each square, 5^3) possible results. I save 0 for padding, so the results range from 1-244. winning game state is 244.
+
+**Reward function**
+- win           +1 
+- no result      0  
+- loss          -1 
+The reward function: 
+- 0 can happen on the first 5 turns
+- 1 can happen on any turn
+- -1 can only happen on the last turn
+
+Because there is only one vector [3,3,3,3,3] that corresponds to +1 ALWAYS, everything else is either 0 or -1 depending on whether it is the last turn or not. This means we don't need to use a NN to predict the reward, we can hardcode the reward and construct the reward distribution based on a boolean output that predicts whether its the last turn or not. 
+Then when we sample S' we will index the corresponding reward.
 
 ## Encodings
 
@@ -85,44 +130,6 @@ Each letter in the word has an associated result.
 | 1 | Missing (letter not in word)|
 | 2 | Contained (letter present in word, but in a different position)|
 | 3 | Exact (letter present and in that exact location)|
-
-**State Transition function**
-there are 243 (5 squares, 3 possible outcomes for each square, 5^3) possible results. 
-- 0 padding
-- 1 missing
-- 2 contained
-- 3 exact
-the vector [3,3,3,3,3] corresponds to getting every letter in its correct position.
-Because the actual probability function will be quite difficult to make, i expect pretraining the state transition function will make everything much easier. Then we can check the validity of the trained model. If everything is good, training the Policy will be the next step.
-
-
-**Reward function**
-- win           +1 
-- no result      0  
-- loss          -1 
-The reward function: 
-- 0 can happen on the first 5 turns
-- 1 can happen on any turn
-- -1 can only happen on the last turn
-
-Because there is only one vector [3,3,3,3,3] that corresponds to +1 ALWAYS, everything else is either 0 or -1 depending on whether it is the last turn or not. This means we don't need to use a NN to predict the reward, we can hardcode the reward and construct the reward distribution based on a boolean output that predicts whether its the last turn or not. 
-Then when we sample S' we will index the corresponding reward.
-
-## Game space
-
-# test
-
-```pytest```
-
-# train
-
-```python main.py``` 
-
-on menu prompt enter 0
-
-# run experiments
-
-```python run_experiments.py```
 
 # weights
 
