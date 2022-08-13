@@ -192,7 +192,7 @@ end
 
 
 
-dictionary = readdlm("data/allowed_words.txt", '\n', String, '\n')
+dictionary = readdlm("word_data/allowed_words.txt", '\n', String, '\n')
 dictionary_nd = Array{String,2}(undef,length(dictionary),5)
 for (i,word) in enumerate(dictionary)
     vec = Vector{String}(split(word,"")) 

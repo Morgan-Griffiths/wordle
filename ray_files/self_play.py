@@ -243,10 +243,10 @@ class SelfPlay:
             game_history = GameHistory(self.mappings)
             state, reward, done = env.reset()
             game_history.state_history.append(state.copy())
-            game_history.word_history.append(env.word_to_action(env.word))
+            game_history.word_history.append(self.mappings.word_to_action(env.word))
             while not done:
                 action = np.random.randint(0, self.config.action_space)
-                state, reward, done = env.step(env.action_to_string(action))
+                state, reward, done = env.step(self.mappings.action_to_string(action))
                 # Next batch
                 game_history.result_history.append(
                     state[env.turn - 1, :, Embeddings.RESULT]
@@ -255,7 +255,9 @@ class SelfPlay:
                 game_history.reward_history.append(reward)
                 if not done:
                     game_history.state_history.append(state.copy())
-                    game_history.word_history.append(env.word_to_action(env.word))
+                    game_history.word_history.append(
+                        self.mappings.word_to_action(env.word)
+                    )
             for i in range(env.turn):
                 game_history.child_visits.append(
                     [a for a in range(self.config.action_space)]
@@ -268,7 +270,7 @@ class SelfPlay:
         game_history = GameHistory(self.mappings)
         state, reward, done = self.env.reset()
         game_history.state_history.append(state.copy())
-        game_history.word_history.append(self.env.word_to_action(self.env.word))
+        game_history.word_history.append(self.mappings.word_to_action(self.env.word))
         with torch.no_grad():
             while not done:
                 root, mcts_info = MCTS(self.config).run(
@@ -285,9 +287,9 @@ class SelfPlay:
                 if render:
                     print(f'Tree depth: {mcts_info["max_tree_depth"]}')
                     print(f"Root value {root.value:.2f}")
-                state, reward, done = self.env.step(self.env.action_to_string(action))
+                state, reward, done = self.env.step(self.mappings.action_to_string(action))
                 if render:
-                    print(f"Played action: {self.env.action_to_string(action)}")
+                    print(f"Played action: {self.mappings.action_to_string(action)}")
                     self.env.visualize_state()
 
                 game_history.store_search_statistics(root, self.config.action_space)
@@ -300,6 +302,6 @@ class SelfPlay:
                 if not done:
                     game_history.state_history.append(state.copy())
                     game_history.word_history.append(
-                        self.env.word_to_action(self.env.word)
+                        self.mappings.word_to_action(self.env.word)
                     )
         return game_history

@@ -70,13 +70,12 @@ class MuDyno:
             num_gpus_per_worker -= 0.05
         else:
             num_gpus_per_worker = 0
-        num_gpus_per_worker = 0.5
         print("num_gpus_per_worker", num_gpus_per_worker)
         # Initialize workers
         self.training_worker = Trainer.options(
             num_cpus=0,
             num_gpus=num_gpus_per_worker if self.config.train_on_gpu else 0,
-        ).remote(self.checkpoint, self.config)
+        ).remote(self.checkpoint, self.config, self.mappings)
         self.shared_storage_worker = SharedStorage.options(
             num_cpus=0,
             num_gpus=num_gpus_per_worker if self.config.selfplay_on_gpu else 0,
@@ -87,14 +86,16 @@ class MuDyno:
         self.shared_storage_worker.set_info.remote("terminate", False)
 
         self.replay_buffer_worker = ReplayBuffer.remote(
-            self.checkpoint, self.replay_buffer, self.config
+            self.checkpoint,
+            self.replay_buffer,
+            self.config,
         )
 
         if self.config.use_last_model_value:
             self.reanalyse_worker = Reanalyse.options(
                 num_cpus=0,
                 num_gpus=num_gpus_per_worker if self.config.reanalyse_on_gpu else 0,
-            ).remote(self.checkpoint, self.config)
+            ).remote(self.checkpoint, self.config, self.mappings)
 
         self.self_play_workers = [
             SelfPlay.options(
@@ -104,6 +105,7 @@ class MuDyno:
                 self.checkpoint,
                 self.env,
                 self.config,
+                self.mappings,
                 self.config.seed + seed,
             )
             for seed in range(self.config.num_workers)
@@ -311,7 +313,7 @@ if __name__ == "__main__":
         "-g",
         "--games",
         dest="warmup_games",
-        help="number of warmup games to play",
+        help="number of warmup games to play per thread",
         default=2e6,
         type=int,
     )
@@ -324,7 +326,7 @@ if __name__ == "__main__":
         type=int,
     )
     parser.add_argument(
-        "--no_gpu",
+        "--no-gpu",
         dest="no_gpu",
         default=False,
         action="store_true",

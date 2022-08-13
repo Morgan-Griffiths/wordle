@@ -254,7 +254,9 @@ class StateActionTransition(nn.Module):
                     np.array(
                         [
                             self.mappings.alphabet_dict[letter]
-                            for letter in self.mappings.index_to_word[a.item()]
+                            for letter in self.mappings.dictionary_index_to_word[
+                                a.item()
+                            ]
                         ]
                     )
                     for a in action

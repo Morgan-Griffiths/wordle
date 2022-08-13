@@ -108,7 +108,7 @@ class ValidateModel:
                         )
                         actions = [action for action in root.children.keys()]
                         action = actions[np.argmax(visit_counts)]
-                        chosen_word = env.action_to_string(action)
+                        chosen_word = self.mappings.action_to_string(action)
                         model_outputs: PolicyOutputs = self.model.policy(
                             torch.tensor(state.copy()).long().unsqueeze(0)
                         )
@@ -118,7 +118,7 @@ class ValidateModel:
                         print("chosen_word", chosen_word)
                         print(
                             "highest prob word",
-                            env.action_to_string(
+                            self.mappings.action_to_string(
                                 np.argmax(
                                     model_outputs.probs[
                                         : self.config.action_space
@@ -173,7 +173,7 @@ class ValidateModel:
                     )
                     actions = [action for action in root.children.keys()]
                     action = actions[np.argmax(visit_counts)]
-                    chosen_word = env.action_to_string(action)
+                    chosen_word = self.mappings.action_to_string(action)
                     state, reward, done = env.step(chosen_word)
                 print(env.visualize_state())
 

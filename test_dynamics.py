@@ -7,7 +7,7 @@ from torch import optim
 import numpy as np
 from ML.networks import StateActionTransition
 from config import Config
-from globals import DynamicOutputs, index_result_dict, CHECKPOINT
+from globals import DynamicOutputs, Mappings, index_result_dict, CHECKPOINT
 from experiments.globals import (
     LearningCategories,
     NetworkConfig,
@@ -135,9 +135,8 @@ if __name__ == "__main__":
     per_buffer = ReplayBuffer.remote(checkpoint, buffer_info["buffer"], config)
     # mu_zero = MuZeroNet(config)
 
-    env = Wordle(word_restriction=config.word_restriction)
-    config.word_to_index = env.dictionary_word_to_index
-    config.index_to_word = env.dictionary_index_to_word
+    mappings = Mappings(config.word_restriction)
+    env = Wordle(mappings)
     mu_zero = StateActionTransition(config)
 
     network_path = "weights/dynamics"

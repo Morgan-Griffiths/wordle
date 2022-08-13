@@ -174,11 +174,11 @@ class Mappings:
         self.index_result_dict = {i: dist for dist, i in self.result_index_dict.items()}
 
         # WORDS
-        with open("data/allowed_words.txt", "r") as f:
+        with open("word_data/allowed_words.txt", "r") as f:
             wordle_dictionary = f.readlines()
         self.dictionary = [word.strip() for word in wordle_dictionary]
 
-        with open("data/possible_words.txt", "r") as f:
+        with open("word_data/possible_words.txt", "r") as f:
             word_targets_dictionary = f.readlines()
         self.target_dictionary = [word.strip() for word in word_targets_dictionary]
 
@@ -205,9 +205,7 @@ class Mappings:
 
         # LETTERS
         self.alphabet_dict = {letter: i for i, letter in enumerate(alphabet)}
-        self.index_to_letter_dict = {
-            i: letter for i, letter in enumerate(alphabet)
-        }
+        self.index_to_letter_dict = {i: letter for i, letter in enumerate(alphabet)}
 
     def action_to_string(self, action: int):
         try:

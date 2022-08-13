@@ -19,9 +19,9 @@ from utils import result_from_state
 #     print(env.word)
 #     turn = 0
 #     action = 5
-#     env.step(env.action_to_string(action))
+#     env.step(self.mappings.action_to_string(action))
 #     result = state[turn][:, Embeddings.RESULT]
-#     print(env.action_to_string(action))
+#     print(self.mappings.action_to_string(action))
 #     res = result_from_state(turn,state)
 #     print(res)
 #     asdf

@@ -44,16 +44,17 @@ class Storage:
         return self.n >= self.max_n
 
     def save_state(self):
-        np.save("data/actions", self.actions)
-        np.save("data/labels", self.labels)
-        np.save("data/states", self.states)
+        np.save("word_data/actions", self.actions)
+        np.save("word_data/labels", self.labels)
+        np.save("word_data/states", self.states)
 
     def get_info(self):
         return self.states, self.actions, self.labels
 
 
 def randomly_sample_games(shared_storage, config):
-    env = Wordle(word_restriction=config.word_restriction)
+    mappings = Mappings(config.word_restriction)
+    env = Wordle(mappings)
     for _ in tqdm(range(config.num_dynamics_examples)):
         states = []
         actions = []
@@ -62,7 +63,7 @@ def randomly_sample_games(shared_storage, config):
         states.append(state.copy())
         while not done:
             action = np.random.randint(1, config.action_space + 1)
-            state, reward, done = env.step(env.action_to_string(action))
+            state, reward, done = env.step(mappings.action_to_string(action))
             # Next batch
             labels.append(state[env.turn - 1, :, Embeddings.RESULT])
             actions.append(action)
@@ -113,7 +114,7 @@ def read_npy_chunk(filename, start_row, num_rows):
     """
     assert start_row >= 0 and num_rows > 0
     with open(filename, "rb") as fhandle:
-        major, minor = np.lib.format.read_magic(fhandle)
+        # major, minor = np.lib.format.read_magic(fhandle)
         shape, fortran, dtype = np.lib.format.read_array_header_1_0(fhandle)
         assert not fortran, "Fortran order arrays not supported"
         # Make sure the offsets aren't invalid.
@@ -131,28 +132,28 @@ def read_npy_chunk(filename, start_row, num_rows):
 
 class DynamicSamples(Dataset):
     def __init__(self):
-        # self.labels = np.load('data/labels.npy')
-        # self.actions = np.load('data/actions.npy')
-        # self.states = np.load('data/states.npy')
+        # self.labels = np.load('word_data/labels.npy')
+        # self.actions = np.load('word_data/actions.npy')
+        # self.states = np.load('word_data/states.npy')
         ...
 
     def __len__(self):
         return int(30e6)
 
     def __getitem__(self, index):
-        label = torch.from_numpy(read_npy_chunk("data/labels.npy", index, 1))
+        label = torch.from_numpy(read_npy_chunk("word_data/labels.npy", index, 1))
         action = torch.from_numpy(
-            read_npy_chunk("data/actions.npy", index, 1).astype(np.int16)
+            read_npy_chunk("word_data/actions.npy", index, 1).astype(np.int16)
         )
-        state = torch.from_numpy(read_npy_chunk("data/states.npy", index, 1))
+        state = torch.from_numpy(read_npy_chunk("word_data/states.npy", index, 1))
         return (action, state, label)
 
 
 class DynamicInMemory(Dataset):
     def __init__(self):
-        self.labels = np.load("data/labels.npy")
-        self.actions = np.load("data/actions.npy")
-        self.states = np.load("data/states.npy")
+        self.labels = np.load("word_data/labels.npy")
+        self.actions = np.load("word_data/actions.npy")
+        self.states = np.load("word_data/states.npy")
         self.actions = self.actions.astype(np.int16)
 
     def __len__(self):
@@ -224,7 +225,7 @@ def train_linear(num_workers=2, use_gpu=False):
         backend="torch",
         num_workers=num_workers,
         use_gpu=use_gpu,
-        logdir="./ray_results",
+        logdir="./ray_\results",
     )
     config = Config()
     mapping = Mappings(config.word_restriction)

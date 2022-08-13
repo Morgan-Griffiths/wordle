@@ -54,7 +54,7 @@ class API(object):
 
         actions = [action for action in root.children.keys()]
         action = actions[np.argmax(visit_counts)]
-        chosen_word = self.env.action_to_string(action)
+        chosen_word = self.mappings.action_to_string(action)
         with torch.no_grad():
             outputs: PolicyOutputs = self.model.policy(
                 torch.as_tensor(state).long().unsqueeze(0)
@@ -64,7 +64,7 @@ class API(object):
     def top_5_policy(self, policy):
         top5 = np.argpartition(policy[None, :], -5)[0][-5:]
         freqs = policy[top5]
-        words = [self.env.action_to_string(num + 1) for num in top5]
+        words = [self.mappings.action_to_string(num + 1) for num in top5]
         return {word: freq for word, freq in zip(words, freqs)}
 
     def step(self):

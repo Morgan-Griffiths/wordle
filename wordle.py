@@ -101,7 +101,7 @@ class Wordle:
         print(table)
 
     def copy(self):
-        env = Wordle()
+        env = Wordle(self.mappings)
         env.word = deepcopy(self.word)
         env.state = deepcopy(self.state)
         env.game_over = deepcopy(self.game_over)

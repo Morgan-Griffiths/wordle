@@ -19,16 +19,13 @@ First
 1. run ```python setup.py```
 2. install requirements.txt
 
-- run tests
-    `python -m pytest tests`
+- run tests `python -m pytest tests`
 
-- generate games for dynamics function training
+- generate games for dynamics function pre-training
 - train the dynamics function
 - train the actor and critic via self play
     ```python main.py``` 
     on menu prompt enter 0
-
-
 
 ## Strategy
 
@@ -60,6 +57,7 @@ In essence there are 4 things at play.
 4. Critic
 
 You can read the paper [here](https://arxiv.org/pdf/1911.08265.pdf).
+
 ### How my implementation differs
 
 A key aspect of MuZero is its use in perfect information games. In such games, the dynamics function is deterministic. For example if i show you a chess board and tell you what my next move is. You know exactly what the next board position will be. This is not the case in Wordle.
@@ -86,9 +84,7 @@ Then when we sample S' we will index the corresponding reward.
 
 ## Encodings
 
-To make wordle machine digestible we have to convert the game state into numbers. If we take the following image
-
-![img](./images/wordle.png "Wordle")
+To make wordle machine digestible we have to convert the game state into numbers. 
 
 Each letter is encoded via the following format. With 0 reserved for padding
 
@@ -131,30 +127,24 @@ Each letter in the word has an associated result.
 | 2 | Contained (letter present in word, but in a different position)|
 | 3 | Exact (letter present and in that exact location)|
 
-# weights
+If we take the following image
 
-Saved network weights
+![img](./images/wordle.png "Wordle")
 
-# results
+letter encoding will be
+[5,14,1,3,20]
+result encoding will be
+[2,1,3,3,2]
 
-Tensorboard stats
+## Training
 
-# plots
+Learning the state transition function does not rely on the actor. This is because the goal of the dynamics function is the learn the transition function for any action in any state. Because of this, we can train the dynamics function first on randomly sampled games. This is a huge time saver, because the policy is only as good as the dynamics function. If the dynamics function erroneously reports that we have lost the game, even though we choose the right action, the policy will be updated improperly.
 
-are in images
-
-# MuZero in wordle
-
-Wordle is a non stationary, imperfect information game. 
-
-Traditionally muzero maps (s,a) -> s' in a deterministic fashion. However, in non-stationary, imperfection informations games, we must map (s,a) -> distribution over s'.
-In wordle, given a state s, and action (5 letter word) a, there is a 243 length distribution (3^5) over a (5,3) result vector. 5 letters [0,27] and 3 states [0,3]. With a padding dimension at 0. Then sample the 243 length vector and combine with s to make s'. 
-
-In the same way an algorithm can be made, to maximize the collapse of the probability distribution function. given a state s and available words w, pick the word w that collapses the distribution function the most. At the limit, we will collapse the distribution function down to 1 possibility, when we have all the necessary information to pick the word.
+Therefore, it is recommended to throughly train the dynamics function first. And then train the actor and critic.
 
 # Credits
 
-thanks to 3b1b and werner-duvaud for some code and inspiration.
+Many thanks to 3b1b and werner-duvaud for some code and inspiration.
 
 https://github.com/3b1b/videos/tree/master/_2022/wordle
 https://github.com/werner-duvaud/muzero-general

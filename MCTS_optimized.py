@@ -107,7 +107,7 @@ class MCTS_dict:
                     # get previous state -> new state
                     next_state = state_transition(
                         state.cpu().numpy(),
-                        self.config.index_to_word[action],
+                        self.mappings.index_to_word[action],
                         np.array(result),
                     )
                     reward = int(reward.item())
