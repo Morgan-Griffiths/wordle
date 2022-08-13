@@ -12,7 +12,7 @@ Wordle is a word game where you have 6 tries to guess a hidden 5 letter word. Ea
 
 Based on this information, if you choose your words wisely, you can deduce the hidden word.
 
-## How to use
+## How to use this repo
 
 First 
 
@@ -88,7 +88,7 @@ Then when we sample S' we will index the corresponding reward.
 
 To make wordle machine digestible we have to convert the game state into numbers. If we take the following image
 
-![img](./images/wordle-example.png "Wordle")
+![img](./images/wordle.png "Wordle")
 
 Each letter is encoded via the following format. With 0 reserved for padding
 
