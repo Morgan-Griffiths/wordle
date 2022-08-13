@@ -43,44 +43,48 @@ For this agent however, we will simply be optimizing for the end result. Which w
 
 To make wordle machine digestible we have to convert the game state into numbers. If we take the following image
 
-![img](wordle-example.png)
+![img](./images/wordle-example.png "Wordle")
 
 Each letter is encoded via the following format. With 0 reserved for padding
 
-- _:0
-- a:1  
-- b:2
-- c:3
-- d:4 
-- e:5
-- f:6
-- g:7
-- h:8
-- i:9
-- j:10
-- k:11
-- l:12
-- m:13
-- n:14
-- o:15
-- p:16
-- q:17
-- r:18
-- s:19
-- t:20
-- u:21
-- v:22
-- w:23
-- x:24
-- y:25
-- z:26 
+| Letter      | Number |
+| ----------- | ----------- |
+| _ | 0|
+| a | 1|
+| b | 2|
+| c | 3|
+| d | 4|
+| e | 5|
+| f | 6|
+| g | 7|
+| h | 8|
+| i | 9|
+| j | 10|
+| k | 11|
+| l | 12|
+| m | 13|
+| n | 14|
+| o | 15|
+| p | 16|
+| q | 17|
+| r | 18|
+| s | 19|
+| t | 20|
+| u | 21|
+| v | 22|
+| w | 23|
+| x | 24|
+| y | 25|
+| z | 26|
 
 Each letter in the word has an associated result.
 
-- 0 : padding
-- 1 : Missing (letter not in word)
-- 2 : Contained (letter present in word, but in a different position)
-- 3 : Exact (letter present and in that exact location)
+| Result      | Meaning |
+| ----------- | ----------- |
+| 0 | padding|
+| 1 | Missing (letter not in word)|
+| 2 | Contained (letter present in word, but in a different position)|
+| 3 | Exact (letter present and in that exact location)|
 
 **State Transition function**
 there are 243 (5 squares, 3 possible outcomes for each square, 5^3) possible results. 
