@@ -59,15 +59,10 @@ def mu_agent(config: Config):
 
 
 @pytest.fixture
-def mcts(config):
-    return MCTS(config)
+def mcts(config,word_dictionary):
+    return MCTS(config,word_dictionary)
 
 
 @pytest.fixture
-def mcts_dict(config):
-    return MCTS_dict(config)
-
-
-@pytest.fixture
-def mcts_opt(config):
-    return MCTS_dict(config)
+def mcts_dict(config, word_dictionary):
+    return MCTS_dict(config, word_dictionary)

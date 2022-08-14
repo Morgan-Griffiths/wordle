@@ -12,6 +12,8 @@ from ML.networks import MuZeroNet
 from memory_profiler import profile
 
 """ 
+OO implementation of MCTS
+
 MuZero MCTS:
 the initial state is passed through the encoder -> h'. 
 To get S', we query the dynamics function of MuZero which takes (S,A) -> P(S').
