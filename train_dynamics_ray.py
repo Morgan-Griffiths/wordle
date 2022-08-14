@@ -293,7 +293,7 @@ class MuDyno:
         cpu_weights = cpu_actor.get_initial_weights.remote(self.config, self.mappings)
         self.checkpoint["weights"], self.summary = copy.deepcopy(ray.get(cpu_weights))
 
-    def __exit__(self):
+    def __exit__(self, exc_type, exc_value, traceback):
         ray.shutdown()
 
 
@@ -305,7 +305,7 @@ if __name__ == "__main__":
         Train and evaluate networks on letter representations.
         """
     )
-    parser.add_argument("-b", "--batch", help="Batch size", default=4096, type=int)
+    parser.add_argument("-b", "--batch", help="Batch size", default=128, type=int)
     parser.add_argument(
         "--resume", help="resume training from an earlier run", action="store_true"
     )
@@ -318,7 +318,7 @@ if __name__ == "__main__":
         "--games",
         dest="warmup_games",
         help="number of warmup games to play per thread",
-        default=2e6,
+        default=5000,
         type=int,
     )
     parser.add_argument(
@@ -326,7 +326,7 @@ if __name__ == "__main__":
         "--steps",
         dest="warmup_steps",
         help="number of dynamics training steps",
-        default=1000,
+        default=100,
         type=int,
     )
     parser.add_argument(

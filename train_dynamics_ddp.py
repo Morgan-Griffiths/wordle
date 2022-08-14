@@ -264,7 +264,7 @@ def train_network(id, data_dict, config, mapping, training_params):
 def train_multi():
     dataset = DynamicInMemory()
     trainloader = DataLoader(
-        dataset=dataset, batch_size=128, shuffle=True, num_workers=2
+        dataset=dataset, batch_size=4096, shuffle=True, num_workers=8
     )
     data_dict = {
         "trainloader": trainloader,

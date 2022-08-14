@@ -1,6 +1,7 @@
 *__pycache__
 *.npy
 *.pdf
+*.log
 .DS_Store
 .vscode/
 replay_buffer_storage/

@@ -14,12 +14,12 @@ Based on this information, if you choose your words wisely, you can deduce the h
 
 ## How to use this repo
 
-First 
+Repo setup
 
 1. run ```python setup.py```
 2. install requirements.txt
 
-**tests**
+**Tests**
 
 run tests `python -m pytest tests`
 
@@ -98,6 +98,11 @@ The reward function:
 Because there is only one vector [3,3,3,3,3] that corresponds to +1 ALWAYS, everything else is either 0 or -1 depending on whether it is the last turn or not. This means we don't need to use a NN to predict the reward, we can hardcode the reward and construct the reward distribution based on a boolean output that predicts whether its the last turn or not. 
 Then when we sample S' we will index the corresponding reward.
 
+## Training
+
+Learning the state transition function does not rely on the actor. This is because the goal of the dynamics function is the learn the transition function for any action in any state. Because of this, we can train the dynamics function first on randomly sampled games. This is a huge time saver, because the policy is only as good as the dynamics function. If the dynamics function erroneously reports that we have lost the game, even though we choose the right action, the policy will be updated improperly.
+
+Therefore, it is recommended to throughly train the dynamics function first. And then train the actor and critic.
 ## Encodings
 
 To make wordle machine digestible we have to convert the game state into numbers. 
@@ -151,12 +156,6 @@ letter encoding will be
 [5,14,1,3,20]
 result encoding will be
 [2,1,3,3,2]
-
-## Training
-
-Learning the state transition function does not rely on the actor. This is because the goal of the dynamics function is the learn the transition function for any action in any state. Because of this, we can train the dynamics function first on randomly sampled games. This is a huge time saver, because the policy is only as good as the dynamics function. If the dynamics function erroneously reports that we have lost the game, even though we choose the right action, the policy will be updated improperly.
-
-Therefore, it is recommended to throughly train the dynamics function first. And then train the actor and critic.
 
 # Credits
 

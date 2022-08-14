@@ -26,7 +26,7 @@ class API(object):
         self.config = Config()
         self.config.num_simulations = self.config.action_space * 5
         self.mappings = Mappings(self.config.word_restriction)
-        self.env = Wordle(word_restriction=self.config.action_space)
+        self.env = Wordle(self.mappings)
         self.model = MuZeroNet(self.config, self.mappings)
         self.load_model(self.model, self.config.production_path)
         self.reset()
