@@ -19,12 +19,16 @@ First
 1. run ```python setup.py```
 2. install requirements.txt
 
-- run tests `python -m pytest tests`
+**tests**
+
+run tests `python -m pytest tests`
 
 **Dynamics Function Games Generation**
-- generate games for dynamics function pre-training
+
+generate games for dynamics function pre-training
 
 **Dynamics Function Pretraining**
+
 There are two flavors for pretraining the dynamics function
 I've found that ray doesn't always ultilize my gpus like i would want, so i implemented dynamics training with PyTorch DDP as well as with Ray.
 - train_dynamics_ddp.py - This is parallelized with pytorch DDP
