@@ -21,11 +21,23 @@ First
 
 - run tests `python -m pytest tests`
 
+**Dynamics Function Games Generation**
 - generate games for dynamics function pre-training
-- train the dynamics function
-- train the actor and critic via self play
-    ```python main.py``` 
-    on menu prompt enter 0
+
+**Dynamics Function Pretraining**
+There are two flavors for pretraining the dynamics function
+I've found that ray doesn't always ultilize my gpus like i would want, so i implemented dynamics training with PyTorch DDP as well as with Ray.
+- train_dynamics_ddp.py - This is parallelized with pytorch DDP
+- train_dynamics_ray.py - This is parallelized with ray
+
+
+- main.py contains the following abilities
+    - train the actor, critic and dynamics function via self play
+    - load a model
+    - validate the model manually (can check model outputs via command line)
+    - validate MCTS. validate the MCTS tree. Outputs a pdf
+    - validate the replay buffer. Check your model inputs to make sure the representations are correct.
+    - validate model updates. Step through the model learning process.
 
 ## Strategy
 
@@ -146,5 +158,5 @@ Therefore, it is recommended to throughly train the dynamics function first. And
 
 Many thanks to 3b1b and werner-duvaud for some code and inspiration.
 
-https://github.com/3b1b/videos/tree/master/_2022/wordle
-https://github.com/werner-duvaud/muzero-general
+- https://github.com/3b1b/videos/tree/master/_2022/wordle
+- https://github.com/werner-duvaud/muzero-general

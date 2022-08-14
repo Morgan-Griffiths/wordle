@@ -1,18 +1,19 @@
 from collections import deque
-import sys
-import torch
-import torch.nn.functional as F
-from torch import optim
 import numpy as np
-from globals import index_result_dict, PolicyOutputs, CHECKPOINT
-from ray_files.replay_buffer import ReplayBuffer
-from experiments.globals import actionSpace, DataTypes, NetworkConfig, dataMapping
-from torch.nn import SmoothL1Loss
-from config import Config
-from main import load_replay_buffer
-from ML.networks import ZeroPolicy
+import sys
 import copy
 import ray
+
+import torch.nn.functional as F
+from torch.nn import SmoothL1Loss
+from torch import optim
+import torch
+from ML.utils import load_replay_buffer
+
+from ray_files.replay_buffer import ReplayBuffer
+from globals import Mappings, PolicyOutputs, CHECKPOINT
+from ML.networks import ZeroPolicy, MuZeroNet
+from config import Config
 
 
 def test_policy(agent_params, training_params, config, per_buffer):
@@ -29,25 +30,24 @@ def test_policy(agent_params, training_params, config, per_buffer):
         word_batch,
         gradient_scale_batch,
     ) = batch
-    # print("target_actions", target_actions)
-    # print("target_rewards", target_rewards)
     net = ZeroPolicy(config)
     value_criterion = SmoothL1Loss()
     if training_params["resume"]:
         net.load_state_dict(torch.load(training_params["load_path"]))
     optimizer = optim.AdamW(net.parameters(), lr=agent_params["learning_rate"])
-    criterion = training_params["criterion"](reduction="sum")
     scores = []
     score_window = deque(maxlen=100)
     for epoch in range(training_params["epochs"]):
         sys.stdout.write("\r")
         optimizer.zero_grad()
         outputs: PolicyOutputs = net(state_batch)
-        # print("outputs.probs", outputs.probs)
-        # print("outputs.value", outputs.value)
-        policy_loss = F.nll_loss(outputs.logprobs, word_batch-1)
+        policy_loss = (
+            F.kl_div(outputs.logprobs, policy_batch, reduction="none")
+            .sum(dim=1)
+            .unsqueeze(1)
+        )
         value_loss = value_criterion(outputs.value, reward_batch)
-        loss = policy_loss + value_loss
+        loss = (policy_loss + value_loss).sum()
         loss.backward()
         optimizer.step()
         score_window.append(loss.item())
@@ -60,7 +60,6 @@ def test_policy(agent_params, training_params, config, per_buffer):
     print(f"Saving weights to {training_params['load_path']}")
     torch.save(net.state_dict(), training_params["load_path"])
     validation(net, per_buffer)
-    # return np.mean(score_window)
 
 
 def validation(network, per_buffer):
@@ -111,24 +110,13 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "-d",
-        "--datatype",
-        default=DataTypes.POLICY,
-        type=str,
-        metavar=f"[{DataTypes.THRESHOLD},{DataTypes.WORDLE},{DataTypes.RANDOM},{DataTypes.POLICY}]",
-        help="Which dataset to train on",
-    )
-    parser.add_argument(
         "-e", "--epochs", help="Number of training epochs", default=100, type=int
     )
     parser.add_argument(
         "--resume", help="resume training from an earlier run", action="store_true"
     )
     parser.add_argument(
-        "-lr", help="resume training from an earlier run", type=float, default=0.03
-    )
-    parser.add_argument(
-        "-v", dest="validate", help="validate the trained network", action="store_true"
+        "-lr", help="resume training from an earlier run", type=float, default=3e-3
     )
     parser.add_argument(
         "-b",
@@ -143,11 +131,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
     config = Config()
     print(args)
-    network_path = "results/policy_test"
-    loss_type = dataMapping[args.datatype]
+    network_path = "weights/policy_test"
     agent_params = {
         "learning_rate": args.lr,
-        "network": NetworkConfig.DataModels[args.datatype],
+        "network": ZeroPolicy,
         "save_dir": "checkpoints",
         "save_path": network_path,
         "load_path": network_path,
@@ -155,27 +142,20 @@ if __name__ == "__main__":
     training_params = {
         "resume": args.resume,
         "epochs": args.epochs,
-        "criterion": NetworkConfig.LossFunctions[loss_type],
-        "network": NetworkConfig.DataModels[args.datatype],
+        "network": ZeroPolicy,
         "load_path": network_path,
     }
     network_params = {
         "seed": 346,
-        "nA": actionSpace[args.datatype],
         "load_path": network_path,
         "emb_size": 16,
     }
     config.batch_size = args.batch_size
+    mappings = Mappings(config.word_restriction)
     buffer_info = load_replay_buffer()
     checkpoint = copy.copy(CHECKPOINT)
     checkpoint["num_played_steps"] = buffer_info["num_played_steps"]
     checkpoint["num_played_games"] = buffer_info["num_played_games"]
     checkpoint["num_reanalysed_games"] = buffer_info["num_reanalysed_games"]
     per_buffer = ReplayBuffer.remote(checkpoint, buffer_info["buffer"], config)
-    if args.validate:
-        net = ZeroPolicy(config)
-        net.load_state_dict(torch.load(network_path))
-        net.eval()
-        validation(net, per_buffer)
-    else:
-        test_policy(agent_params, training_params, config, per_buffer)
+    test_policy(agent_params, training_params, config, per_buffer)

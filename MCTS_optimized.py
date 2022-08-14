@@ -107,8 +107,9 @@ class MCTS_dict:
                     # get previous state -> new state
                     next_state = state_transition(
                         state.cpu().numpy(),
-                        self.mappings.index_to_word[action],
+                        self.mappings.dictionary_index_to_word[action],
                         np.array(result),
+                        self.mappings,
                     )
                     reward = int(reward.item())
                     state = torch.as_tensor(next_state).long()

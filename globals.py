@@ -185,6 +185,7 @@ class Mappings:
         if word_restriction is not None:
             step_size = len(self.dictionary) // word_restriction
             self.dictionary_in_use = self.dictionary[::step_size][:word_restriction]
+            self.target_dictionary = self.dictionary_in_use
         else:
             self.dictionary_in_use = self.target_dictionary
 

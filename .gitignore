@@ -3,7 +3,7 @@
 *.pdf
 .DS_Store
 .vscode/
-dataset/
+replay_buffer_storage/
 images/
 weights/
 results/

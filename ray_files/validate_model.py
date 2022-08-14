@@ -24,9 +24,9 @@ class ValidateModel:
         self.config = config
         self.config.add_exploration_noise = False
         self.config.train_on_gpu = False
-        self.mapping = Mappings(config.word_restriction)
+        self.mappings = Mappings(config.word_restriction)
         # Initialize the network
-        self.model = MuZeroNet(self.config)
+        self.model = MuZeroNet(self.config, self.mappings)
         self.model.set_weights(strip_module(checkpoint["weights"]))
         self.model.eval()
         # if is_net_ddp(self.model):
@@ -134,7 +134,7 @@ class ValidateModel:
                         state, reward, done = env.step(chosen_word)
                         print(env.visualize_state())
                         print(f"Next state {state[env.turn-1,:,Embeddings.RESULT]}")
-                        result_index = self.mapping.result_index_dict[
+                        result_index = self.mappings.result_index_dict[
                             tuple(state[env.turn - 1, :, Embeddings.RESULT])
                         ]
                         print(
@@ -143,39 +143,42 @@ class ValidateModel:
                         input(f"press ENTER to continue, or ctrl c to quit")
                         if done:
                             rewards.append(reward)
-                    
+
                     print(f"total_reward {rewards}")
 
         except KeyboardInterrupt:
             return
 
     def validate_mcts(self, env):
-        with torch.no_grad():
-            while True:
-                rewards = []
-                # while True:
-                state, reward, done = env.reset()
-                while not done:
-                    print(env.visualize_state())
-                    # model_outputs: PolicyOutputs = self.model.policy(
-                    #     torch.tensor(state.copy()).long().unsqueeze(0)
-                    # )
-                    # while not done:
-                    root, mcts_info = MCTS(self.config).run(
-                        self.model, state, reward, env.turn
-                    )
-                    self.plot_mcts(root)
-                    input(f"press ENTER to continue, or ctrl c to quit")
+        try:
+            with torch.no_grad():
+                while True:
+                    rewards = []
+                    # while True:
+                    state, reward, done = env.reset()
+                    while not done:
+                        print(env.visualize_state())
+                        # model_outputs: PolicyOutputs = self.model.policy(
+                        #     torch.tensor(state.copy()).long().unsqueeze(0)
+                        # )
+                        # while not done:
+                        root, mcts_info = MCTS(self.config).run(
+                            self.model, state, reward, env.turn
+                        )
+                        self.plot_mcts(root)
+                        input(f"press ENTER to continue, or ctrl c to quit")
 
-                    visit_counts = np.array(
-                        [child.visit_count for child in root.children.values()],
-                        dtype="int32",
-                    )
-                    actions = [action for action in root.children.keys()]
-                    action = actions[np.argmax(visit_counts)]
-                    chosen_word = self.mappings.action_to_string(action)
-                    state, reward, done = env.step(chosen_word)
-                print(env.visualize_state())
+                        visit_counts = np.array(
+                            [child.visit_count for child in root.children.values()],
+                            dtype="int32",
+                        )
+                        actions = [action for action in root.children.keys()]
+                        action = actions[np.argmax(visit_counts)]
+                        chosen_word = self.mappings.action_to_string(action)
+                        state, reward, done = env.step(chosen_word)
+                    print(env.visualize_state())
+        except KeyboardInterrupt:
+            return
 
     def plot_mcts(self, root, plot=True):
         """

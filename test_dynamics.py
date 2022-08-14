@@ -7,18 +7,15 @@ from torch import optim
 import numpy as np
 from ML.networks import StateActionTransition
 from config import Config
-from globals import DynamicOutputs, Mappings, index_result_dict, CHECKPOINT
-from experiments.globals import (
-    LearningCategories,
-    NetworkConfig,
-)
+from globals import DynamicOutputs, Mappings, CHECKPOINT
+from torch.nn import CrossEntropyLoss
 import torch.nn.functional as F
 from main import load_replay_buffer
 from ray_files.replay_buffer import ReplayBuffer
 from wordle import Wordle
 
 
-def test_state_transition(net, training_params, agent_params, per_buffer):
+def test_state_transition(net, training_params, agent_params, per_buffer, mappings):
     optimizer = optim.AdamW(
         net.parameters(), lr=agent_params["learning_rate"], weight_decay=3e-2
     )
@@ -37,8 +34,6 @@ def test_state_transition(net, training_params, agent_params, per_buffer):
         word_batch,
         gradient_scale_batch,
     ) = batch
-    # print(state_batch)
-    # print(action_batch)
     for epoch in range(training_params["epochs"]):
         sys.stdout.write("\r")
         outputs: DynamicOutputs = net.dynamics(
@@ -56,12 +51,10 @@ def test_state_transition(net, training_params, agent_params, per_buffer):
         sys.stdout.flush()
         sys.stdout.write(f", loss {np.mean(score_window):.4f}")
         sys.stdout.flush()
-    # print(f"Saving weights to {training_params['load_path']}")
-    # torch.save(net.state_dict(), training_params["load_path"])
-    validation(net, batch)
+    validation(net, batch, mappings)
 
 
-def validation(network, batch):
+def validation(network, batch, mappings):
     (
         state_batch,
         action_batch,
@@ -73,28 +66,30 @@ def validation(network, batch):
         word_batch,
         gradient_scale_batch,
     ) = batch
-    while True:
-        print(f"Number of states {len(state_batch)}")
-        try:
-            sample_idx = int(input(f"Pick a number between 0-{len(state_batch)-1}"))
-        except Exception as e:
-            print(e)
-        # sample_idx = np.random.choice(len(states))
-        state, action = state_batch[sample_idx], action_batch[sample_idx]
-        target_result = result_batch[sample_idx]
-        with torch.no_grad():
-            outputs: DynamicOutputs = network.dynamics(
-                state.unsqueeze(0), action.view(1, 1)
-            )
-            print("state", state)
-            print("action", action)
-            print(
-                "actual state prob",
-                outputs.state_probs[0][target_result.item()],
-            )
-            print("winning state prob", outputs.state_probs[0][-1])
-            print("target_result", index_result_dict[target_result.item()])
-
+    try:
+        while True:
+            print(f"Number of states {len(state_batch)}")
+            try:
+                sample_idx = int(input(f"Pick a number between 0-{len(state_batch)-1}"))
+            except Exception as e:
+                print(f'Invalid number {e}')
+                continue
+            state, action = state_batch[sample_idx], action_batch[sample_idx]
+            target_result = result_batch[sample_idx]
+            with torch.no_grad():
+                outputs: DynamicOutputs = network.dynamics(
+                    state.unsqueeze(0), action.view(1, 1)
+                )
+                print("state", state)
+                print("action", action)
+                print(
+                    "actual state prob",
+                    outputs.state_probs[0][target_result.item()],
+                )
+                print("winning state prob", outputs.state_probs[0][-1])
+                print("target_result", mappings.index_result_dict[target_result.item()])
+    except KeyboardInterrupt:
+        return
 
 if __name__ == "__main__":
 
@@ -133,14 +128,12 @@ if __name__ == "__main__":
     checkpoint["num_played_games"] = buffer_info["num_played_games"]
     checkpoint["num_reanalysed_games"] = buffer_info["num_reanalysed_games"]
     per_buffer = ReplayBuffer.remote(checkpoint, buffer_info["buffer"], config)
-    # mu_zero = MuZeroNet(config)
 
     mappings = Mappings(config.word_restriction)
     env = Wordle(mappings)
-    mu_zero = StateActionTransition(config)
+    mu_zero = StateActionTransition(mappings)
 
     network_path = "weights/dynamics"
-    # loss_type = dataMapping[args.datatype]
     agent_params = {
         "learning_rate": args.lr,
         "save_dir": "checkpoints",
@@ -150,22 +143,7 @@ if __name__ == "__main__":
     training_params = {
         "resume": args.resume,
         "epochs": args.epochs,
-        "criterion": NetworkConfig.LossFunctions[
-            LearningCategories.MULTICLASS_CATEGORIZATION
-        ],
+        "criterion": CrossEntropyLoss,
         "load_path": network_path,
     }
-    # network_params = {
-    #     "seed": 346,
-    #     "nA": actionSpace[args.datatype],
-    #     "load_path": network_path,
-    #     "emb_size": 16,
-    # }
-    # dataset = load_data(args.datatype)
-    # if args.validate:
-    #     net = agent_params["network"](network_params)
-    #     net.load_state_dict(torch.load(network_path))
-    #     net.eval()
-    #     validation(net, dataset)
-    # else:
-    test_state_transition(mu_zero, training_params, agent_params, per_buffer)
+    test_state_transition(mu_zero, training_params, agent_params, per_buffer, mappings)

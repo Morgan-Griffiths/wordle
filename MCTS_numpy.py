@@ -138,7 +138,7 @@ class MCTS_numpy:
     def decay_epsilon(self):
         self.epsilon = max(0, self.epsilon * 0.999)
 
-    @profile
+    # @profile
     def run(self, agent: MuZeroNet, state, initial_reward, turn):
         device = next(agent.parameters()).device
         with torch.no_grad():
@@ -191,8 +191,9 @@ class MCTS_numpy:
                     # get previous state -> new state
                     next_state = state_transition(
                         node.parent.state.cpu().numpy(),
-                        self.mappings.index_to_word[action],
+                        self.mappings.dictionary_index_to_word[action],
                         np.array(result),
+                        self.mappings,
                     )
                     if state_choice not in node.children:
                         node.children[state_choice] = NumpyNode(

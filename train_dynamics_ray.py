@@ -33,15 +33,10 @@ class MuDyno:
         print("Is gpu avail ", torch.cuda.is_available())
         print("Number of processors: ", mp.cpu_count())
         print(f"Number of GPUs: {self.num_gpus}")
-        total_gpus = self.num_gpus
-        ray.init(num_gpus=total_gpus, ignore_reinit_error=True)
 
         # Checkpoint and replay buffer used to initialize workers
         self.checkpoint = copy.copy(CHECKPOINT)
         self.replay_buffer = {}
-        cpu_actor = CPUActor.remote()
-        cpu_weights = cpu_actor.get_initial_weights.remote(self.config, self.mappings)
-        self.checkpoint["weights"], self.summary = copy.deepcopy(ray.get(cpu_weights))
 
         # Workers
         self.self_play_workers = None
@@ -292,6 +287,15 @@ class MuDyno:
             self.checkpoint["num_played_games"] = 0
             self.checkpoint["num_reanalysed_games"] = 0
 
+    def __enter__(self):
+        ray.init(num_gpus=self.num_gpus, ignore_reinit_error=True)
+        cpu_actor = CPUActor.remote()
+        cpu_weights = cpu_actor.get_initial_weights.remote(self.config, self.mappings)
+        self.checkpoint["weights"], self.summary = copy.deepcopy(ray.get(cpu_weights))
+
+    def __exit__(self):
+        ray.shutdown()
+
 
 if __name__ == "__main__":
     import argparse
@@ -346,5 +350,5 @@ if __name__ == "__main__":
     config.load_dynamic_weights = False
     mu_dyno = MuDyno(config)
 
-    mu_dyno.train()
-    ray.shutdown()
+    with mu_dyno:
+        mu_dyno.train()

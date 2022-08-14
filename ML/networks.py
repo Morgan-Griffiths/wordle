@@ -324,6 +324,7 @@ class ZeroPolicy(nn.Module):
         maxa = torch.max(act)
         exp = torch.exp(act - maxa)
         probs = exp / torch.sum(exp)
+        print('probs',probs)
         m = Categorical(probs)
         action = m.sample()
         v = self.value_output(x)
