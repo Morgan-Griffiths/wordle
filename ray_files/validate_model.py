@@ -20,11 +20,11 @@ class ValidateModel:
         config: configuration class instance related to the weights.
     """
 
-    def __init__(self, checkpoint, config):
+    def __init__(self, checkpoint, config, word_dictionary):
         self.config = config
         self.config.add_exploration_noise = False
         self.config.train_on_gpu = False
-        self.word_dictionary = WordDictionaries(config.word_restriction)
+        self.word_dictionary = word_dictionary
         # Initialize the network
         self.model = MuZeroNet(self.config, self.word_dictionary)
         self.model.set_weights(strip_module(checkpoint["weights"]))

@@ -84,6 +84,7 @@ class MuDyno:
             self.checkpoint,
             self.replay_buffer,
             self.config,
+            self.word_dictionary,
         )
 
         if self.config.use_last_model_value:

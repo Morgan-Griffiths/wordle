@@ -93,7 +93,7 @@ class MuZero:
         self.shared_storage_worker.set_info.remote("terminate", False)
 
         self.replay_buffer_worker = ReplayBuffer.remote(
-            self.checkpoint, self.replay_buffer, self.config
+            self.checkpoint, self.replay_buffer, self.config, self.word_dictionary
         )
 
         if self.config.use_last_model_value:
@@ -391,11 +391,11 @@ class MuZero:
         return result
 
     def validate(self):
-        vm = ValidateModel(self.checkpoint, self.config)
+        vm = ValidateModel(self.checkpoint, self.config, self.word_dictionary)
         vm.validate(self.env)
 
     def validate_mcts(self):
-        vm = ValidateModel(self.checkpoint, self.config)
+        vm = ValidateModel(self.checkpoint, self.config, self.word_dictionary)
         vm.validate_mcts(self.env)
 
     def shutdown_ray(self):

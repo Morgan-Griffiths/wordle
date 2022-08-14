@@ -46,7 +46,9 @@ def model_update_step(model, buffer_info):
     cpu_actor = CPUActor.remote()
     cpu_weights = cpu_actor.get_initial_weights.remote(config, word_dictionary)
     checkpoint["weights"], _ = copy.deepcopy(ray.get(cpu_weights))
-    per_buffer = ReplayBuffer.remote(checkpoint, buffer_info["buffer"], config)
+    per_buffer = ReplayBuffer.remote(
+        checkpoint, buffer_info["buffer"], config, word_dictionary
+    )
     trainer = Trainer.options(num_cpus=0, num_gpus=0,).remote(
         checkpoint,
         config,
@@ -56,7 +58,7 @@ def model_update_step(model, buffer_info):
         checkpoint,
         config,
     )
-    vm = ValidateModel(checkpoint, config)
+    vm = ValidateModel(checkpoint, config, word_dictionary)
     vm.check_model_updates(trainer, per_buffer, shared_storage_worker)
 
 
@@ -64,11 +66,14 @@ def validate_buffer(buffer_info):
     config = Config()
     config.train_on_gpu = False
     config.batch_size = 4
+    word_dictionary = WordDictionaries(config.word_restriction)
     checkpoint = copy.copy(CHECKPOINT)
     checkpoint["num_played_steps"] = buffer_info["num_played_steps"]
     checkpoint["num_played_games"] = buffer_info["num_played_games"]
     checkpoint["num_reanalysed_games"] = buffer_info["num_reanalysed_games"]
-    per_buffer = ReplayBuffer.remote(checkpoint, buffer_info["buffer"], config)
+    per_buffer = ReplayBuffer.remote(
+        checkpoint, buffer_info["buffer"], config, word_dictionary
+    )
     try:
         while True:
             next_batch = per_buffer.get_batch.remote()

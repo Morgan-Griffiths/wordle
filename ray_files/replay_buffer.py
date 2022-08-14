@@ -15,9 +15,9 @@ class ReplayBuffer:
     Run the class in a dedicated thread to store played games to generate a batch.
     """
 
-    def __init__(self, initial_checkpoint, initial_buffer, config):
+    def __init__(self, initial_checkpoint, initial_buffer, config, word_dictionary):
         self.config = config
-        self.word_dictionary = WordDictionaries(config.word_restriction)
+        self.word_dictionary = word_dictionary
         self.buffer = copy.deepcopy(initial_buffer)
         self.num_played_games = initial_checkpoint["num_played_games"]
         self.num_played_steps = initial_checkpoint["num_played_steps"]

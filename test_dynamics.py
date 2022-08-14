@@ -16,6 +16,7 @@ from wordle import Wordle
 
 """ File for asserting that the dynamics function converges on a small training set """
 
+
 def test_state_transition(
     net, training_params, agent_params, per_buffer, word_dictionary
 ):
@@ -134,11 +135,13 @@ if __name__ == "__main__":
     checkpoint["num_played_steps"] = buffer_info["num_played_steps"]
     checkpoint["num_played_games"] = buffer_info["num_played_games"]
     checkpoint["num_reanalysed_games"] = buffer_info["num_reanalysed_games"]
-    per_buffer = ReplayBuffer.remote(checkpoint, buffer_info["buffer"], config)
 
     word_dictionary = WordDictionaries(config.word_restriction)
     env = Wordle(word_dictionary)
     mu_zero = StateActionTransition(word_dictionary)
+    per_buffer = ReplayBuffer.remote(
+        checkpoint, buffer_info["buffer"], config, word_dictionary
+    )
 
     network_path = "weights/dynamics"
     agent_params = {
