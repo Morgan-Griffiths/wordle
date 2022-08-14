@@ -3,7 +3,7 @@ import pathlib
 import pickle
 import ray
 from ML.muzero import MuZero
-from ML.utils import load_replay_buffer,load_model_menu
+from ML.utils import load_replay_buffer, load_model_menu
 
 from ray_files.utils import CPUActor
 from ray_files.validate_model import ValidateModel
@@ -13,7 +13,7 @@ from ray_files.replay_buffer import ReplayBuffer
 
 from config import Config
 from wordle import Wordle
-from globals import CHECKPOINT, Mappings
+from globals import CHECKPOINT, WordDictionaries
 from create_dynamic_dataset import create_dataset
 
 
@@ -38,19 +38,19 @@ def play_wordle():
 def model_update_step(model, buffer_info):
     config = Config()
     config.train_on_gpu = False
-    mappings = Mappings(config.word_restriction)
+    word_dictionary = WordDictionaries(config.word_restriction)
     checkpoint = copy.copy(CHECKPOINT)
     checkpoint["num_played_steps"] = buffer_info["num_played_steps"]
     checkpoint["num_played_games"] = buffer_info["num_played_games"]
     checkpoint["num_reanalysed_games"] = buffer_info["num_reanalysed_games"]
     cpu_actor = CPUActor.remote()
-    cpu_weights = cpu_actor.get_initial_weights.remote(config, mappings)
+    cpu_weights = cpu_actor.get_initial_weights.remote(config, word_dictionary)
     checkpoint["weights"], _ = copy.deepcopy(ray.get(cpu_weights))
     per_buffer = ReplayBuffer.remote(checkpoint, buffer_info["buffer"], config)
     trainer = Trainer.options(num_cpus=0, num_gpus=0,).remote(
         checkpoint,
         config,
-        mappings,
+        word_dictionary,
     )
     shared_storage_worker = SharedStorage.remote(
         checkpoint,
@@ -146,8 +146,7 @@ if __name__ == "__main__":
     config.train_on_gpu = not args.no_gpu
     config.training_steps = args.epochs
     config.num_simulations = args.sims
-    mu_zero = MuZero(config)
-    with mu_zero:
+    with MuZero(config) as mu_zero:
         try:
             while True:
                 # Configure running options

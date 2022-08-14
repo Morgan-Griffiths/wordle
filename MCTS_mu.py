@@ -4,7 +4,7 @@ import torch
 
 from globals import (
     DynamicOutputs,
-    Mappings,
+    WordDictionaries,
     PolicyOutputs,
 )
 from utils import state_transition
@@ -151,10 +151,10 @@ class Node:
 
 
 class MCTS:
-    def __init__(self, config) -> None:
+    def __init__(self, config, word_dictionary) -> None:
         self.config = config
         self.epsilon = config.epsilon
-        self.mappings = Mappings(config.word_restriction)
+        self.word_dictionary = word_dictionary
 
     def decay_epsilon(self):
         self.epsilon = max(0, self.epsilon * 0.999)
@@ -200,15 +200,15 @@ class MCTS:
                         len(node.state_probs), p=node.state_probs
                     )  # zero padding
                     result, reward = (
-                        self.mappings.index_result_dict[state_choice],
+                        self.word_dictionary.index_result_dict[state_choice],
                         node.reward_outcomes[state_choice],
                     )
                     # get previous state -> new state
                     next_state = state_transition(
                         node.parent.state.cpu().numpy(),
-                        self.mappings.dictionary_index_to_word[action],
+                        self.word_dictionary.dictionary_index_to_word[action],
                         np.array(result),
-                        self.mappings,
+                        self.word_dictionary,
                     )
                     if state_choice not in node.children:
                         node.children[state_choice] = Node(
@@ -235,8 +235,8 @@ class GameHistory:
     Store only usefull information of a self-play game.
     """
 
-    def __init__(self, mappings):
-        self.mappings = mappings
+    def __init__(self, word_dictionary):
+        self.word_dictionary = word_dictionary
         self.result_history = []
         self.word_history = []
         self.state_history = []
@@ -281,7 +281,7 @@ class GameHistory:
         actions = np.array(actions)
         reward_targets = np.array(reward_targets)
         result_targets = [
-            torch.as_tensor(self.mappings.result_index_dict[tuple(res)])
+            torch.as_tensor(self.word_dictionary.result_index_dict[tuple(res)])
             for res in results
         ]
 

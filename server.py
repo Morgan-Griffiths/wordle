@@ -11,7 +11,7 @@ from flask_cors import CORS
 from MCTS_mu import MCTS
 from ML.networks import MuZeroNet
 from ML.utils import strip_module
-from globals import PolicyOutputs, Mappings
+from globals import PolicyOutputs, WordDictionaries
 from wordle import Wordle
 from config import Config
 
@@ -25,9 +25,9 @@ class API(object):
         self.seed = 1458
         self.config = Config()
         self.config.num_simulations = self.config.action_space * 5
-        self.mappings = Mappings(self.config.word_restriction)
-        self.env = Wordle(self.mappings)
-        self.model = MuZeroNet(self.config, self.mappings)
+        self.word_dictionary = WordDictionaries(self.config.word_restriction)
+        self.env = Wordle(self.word_dictionary)
+        self.model = MuZeroNet(self.config, self.word_dictionary)
         self.load_model(self.model, self.config.production_path)
         self.reset()
 
@@ -40,7 +40,7 @@ class API(object):
             raise ValueError("File does not exist")
 
     def model_inference(self, state: np.array, reward):
-        root, mcts_info = MCTS(self.config).run(
+        root, mcts_info = MCTS(self.config, self.word_dictionary).run(
             self.model,
             state,
             reward,
@@ -54,7 +54,7 @@ class API(object):
 
         actions = [action for action in root.children.keys()]
         action = actions[np.argmax(visit_counts)]
-        chosen_word = self.mappings.action_to_string(action)
+        chosen_word = self.word_dictionary.action_to_string(action)
         with torch.no_grad():
             outputs: PolicyOutputs = self.model.policy(
                 torch.as_tensor(state).long().unsqueeze(0)
@@ -64,7 +64,7 @@ class API(object):
     def top_5_policy(self, policy):
         top5 = np.argpartition(policy[None, :], -5)[0][-5:]
         freqs = policy[top5]
-        words = [self.mappings.action_to_string(num + 1) for num in top5]
+        words = [self.word_dictionary.action_to_string(num + 1) for num in top5]
         return {word: freq for word, freq in zip(words, freqs)}
 
     def step(self):

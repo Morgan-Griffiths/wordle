@@ -19,20 +19,23 @@ Repo setup
 1. run ```python setup.py```
 2. install requirements.txt
 
-**Tests**
+#### Tests
 
 run tests `python -m pytest tests`
 
-**Dynamics Function Games Generation**
+#### Dynamics Function Games Generation
 
 generate games for dynamics function pre-training
 
-**Dynamics Function Pretraining**
+#### Dynamics Function Pretraining
 
 There are two flavors for pretraining the dynamics function
 I've found that ray doesn't always ultilize my gpus like i would want, so i implemented dynamics training with PyTorch DDP as well as with Ray.
 - train_dynamics_ddp.py - This is parallelized with pytorch DDP
 - train_dynamics_ray.py - This is parallelized with ray
+
+- test_dynamics.py - 
+- test_policy.py - 
 
 
 - main.py contains the following abilities
@@ -42,6 +45,18 @@ I've found that ray doesn't always ultilize my gpus like i would want, so i impl
     - validate MCTS. validate the MCTS tree. Outputs a pdf
     - validate the replay buffer. Check your model inputs to make sure the representations are correct.
     - validate model updates. Step through the model learning process.
+
+#### Frontend
+
+There is a small frontend for this project located [here](https://github.com/Morgan-Griffiths/wordle_frontend)
+
+To show the bot in action:
+1. Train a version with main.py
+2. Store your desired weights/date-time/model.checkpoint as weights/production.checkpoint
+3. Run `python server.py`
+4. Switch to wordle_frontend and run `python app.py`
+5. Navigate to localhost:5000
+6. Watch your bot take its first steps!
 
 ## Strategy
 

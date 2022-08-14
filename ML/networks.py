@@ -227,7 +227,7 @@ def compute_batch(
 
 
 class StateActionTransition(nn.Module):
-    def __init__(self, mappings):
+    def __init__(self, word_dictionary):
         super(StateActionTransition, self).__init__()
         self.result_emb = nn.Embedding(
             Tokens.EXACT + 1, Dims.EMBEDDING_SIZE, padding_idx=0
@@ -235,7 +235,7 @@ class StateActionTransition(nn.Module):
         self.letter_emb = nn.Embedding(28, Dims.EMBEDDING_SIZE, padding_idx=0)
         self.col_emb = nn.Embedding(5, Dims.EMBEDDING_SIZE)
         self.row_emb = nn.Embedding(6, Dims.EMBEDDING_SIZE)
-        self.mappings = mappings
+        self.word_dictionary = word_dictionary
         self.output_layer = mlp(280, [256, 256, 256], Dims.RESULT_STATE)
 
     def get_weights(self):
@@ -253,8 +253,8 @@ class StateActionTransition(nn.Module):
                 [
                     np.array(
                         [
-                            self.mappings.alphabet_dict[letter]
-                            for letter in self.mappings.dictionary_index_to_word[
+                            self.word_dictionary.alphabet_dict[letter]
+                            for letter in self.word_dictionary.dictionary_index_to_word[
                                 a.item()
                             ]
                         ]

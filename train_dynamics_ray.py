@@ -11,7 +11,7 @@ import numpy as np
 
 from config import Config
 from wordle import Wordle
-from globals import CHECKPOINT, Mappings
+from globals import CHECKPOINT, WordDictionaries
 from ray_files.utils import CPUActor
 from ray_files.trainer import Trainer
 from ray_files.shared_storage import SharedStorage
@@ -22,8 +22,8 @@ from ray_files.self_play import SelfPlay
 class MuDyno:
     def __init__(self, config):
         self.config = config
-        self.mappings = Mappings(config.word_restriction)
-        self.env = Wordle(self.mappings)
+        self.word_dictionary = WordDictionaries(config.word_restriction)
+        self.env = Wordle(self.word_dictionary)
         np.random.seed(self.config.seed)
         torch.manual_seed(self.config.seed)
         if config.train_on_gpu:
@@ -70,7 +70,7 @@ class MuDyno:
         self.training_worker = Trainer.options(
             num_cpus=0,
             num_gpus=num_gpus_per_worker if self.config.train_on_gpu else 0,
-        ).remote(self.checkpoint, self.config, self.mappings)
+        ).remote(self.checkpoint, self.config, self.word_dictionary)
         self.shared_storage_worker = SharedStorage.options(
             num_cpus=0,
             num_gpus=num_gpus_per_worker if self.config.selfplay_on_gpu else 0,
@@ -90,7 +90,7 @@ class MuDyno:
             self.reanalyse_worker = Reanalyse.options(
                 num_cpus=0,
                 num_gpus=num_gpus_per_worker if self.config.reanalyse_on_gpu else 0,
-            ).remote(self.checkpoint, self.config, self.mappings)
+            ).remote(self.checkpoint, self.config, self.word_dictionary)
 
         self.self_play_workers = [
             SelfPlay.options(
@@ -100,7 +100,7 @@ class MuDyno:
                 self.checkpoint,
                 self.env,
                 self.config,
-                self.mappings,
+                self.word_dictionary,
                 self.config.seed + seed,
             )
             for seed in range(self.config.num_workers)
@@ -290,7 +290,9 @@ class MuDyno:
     def __enter__(self):
         ray.init(num_gpus=self.num_gpus, ignore_reinit_error=True)
         cpu_actor = CPUActor.remote()
-        cpu_weights = cpu_actor.get_initial_weights.remote(self.config, self.mappings)
+        cpu_weights = cpu_actor.get_initial_weights.remote(
+            self.config, self.word_dictionary
+        )
         self.checkpoint["weights"], self.summary = copy.deepcopy(ray.get(cpu_weights))
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -348,7 +350,5 @@ if __name__ == "__main__":
     config.num_warmup_training_steps = args.warmup_steps
     config.num_warmup_games = args.warmup_games
     config.load_dynamic_weights = False
-    mu_dyno = MuDyno(config)
-
-    with mu_dyno:
+    with MuDyno(config) as mu_dyno:
         mu_dyno.train()

@@ -112,10 +112,10 @@ class Node:
 
 @ray.remote
 class SelfPlay:
-    def __init__(self, initial_checkpoint, env, config, mappings, seed) -> None:
+    def __init__(self, initial_checkpoint, env, config, word_dictionary, seed) -> None:
         self.epsilon = 0.5
         self.config = config
-        self.mappings = mappings
+        self.word_dictionary = word_dictionary
         self.env = env
 
         # Fix random generator seed
@@ -126,7 +126,7 @@ class SelfPlay:
         else:
             self.device = "cpu"
         # Initialize the network
-        self.model = MuZeroNet(config, mappings)
+        self.model = MuZeroNet(config, word_dictionary)
         self.model.set_weights(copy.deepcopy(initial_checkpoint["weights"]))
         self.model.to(self.device)
         self.model.eval()
@@ -240,13 +240,17 @@ class SelfPlay:
         ) < self.config.num_warmup_games and not ray.get(
             shared_storage.get_info.remote("terminate")
         ):
-            game_history = GameHistory(self.mappings)
+            game_history = GameHistory(self.word_dictionary)
             state, reward, done = env.reset()
             game_history.state_history.append(state.copy())
-            game_history.word_history.append(self.mappings.word_to_action(env.word))
+            game_history.word_history.append(
+                self.word_dictionary.word_to_action(env.word)
+            )
             while not done:
                 action = np.random.randint(0, self.config.action_space)
-                state, reward, done = env.step(self.mappings.action_to_string(action))
+                state, reward, done = env.step(
+                    self.word_dictionary.action_to_string(action)
+                )
                 # Next batch
                 game_history.result_history.append(
                     state[env.turn - 1, :, Embeddings.RESULT]
@@ -256,7 +260,7 @@ class SelfPlay:
                 if not done:
                     game_history.state_history.append(state.copy())
                     game_history.word_history.append(
-                        self.mappings.word_to_action(env.word)
+                        self.word_dictionary.word_to_action(env.word)
                     )
             for i in range(env.turn):
                 game_history.child_visits.append(
@@ -267,13 +271,15 @@ class SelfPlay:
             replay_buffer.save_game.remote(game_history, shared_storage)
 
     def play_game(self, temperature, temperature_threshold, render):
-        game_history = GameHistory(self.mappings)
+        game_history = GameHistory(self.word_dictionary)
         state, reward, done = self.env.reset()
         game_history.state_history.append(state.copy())
-        game_history.word_history.append(self.mappings.word_to_action(self.env.word))
+        game_history.word_history.append(
+            self.word_dictionary.word_to_action(self.env.word)
+        )
         with torch.no_grad():
             while not done:
-                root, mcts_info = MCTS(self.config).run(
+                root, mcts_info = MCTS(self.config, self.word_dictionary).run(
                     self.model, state, reward, self.env.turn
                 )
                 # get chosen action
@@ -287,9 +293,13 @@ class SelfPlay:
                 if render:
                     print(f'Tree depth: {mcts_info["max_tree_depth"]}')
                     print(f"Root value {root.value:.2f}")
-                state, reward, done = self.env.step(self.mappings.action_to_string(action))
+                state, reward, done = self.env.step(
+                    self.word_dictionary.action_to_string(action)
+                )
                 if render:
-                    print(f"Played action: {self.mappings.action_to_string(action)}")
+                    print(
+                        f"Played action: {self.word_dictionary.action_to_string(action)}"
+                    )
                     self.env.visualize_state()
 
                 game_history.store_search_statistics(root, self.config.action_space)
@@ -302,6 +312,6 @@ class SelfPlay:
                 if not done:
                     game_history.state_history.append(state.copy())
                     game_history.word_history.append(
-                        self.mappings.word_to_action(self.env.word)
+                        self.word_dictionary.word_to_action(self.env.word)
                     )
         return game_history

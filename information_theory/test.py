@@ -3,11 +3,11 @@ from information_theory.information import filter_words
 import numpy as np
 
 
-def test_filter(env: Wordle, mappings):
-    env.word = mappings.dictionary[50]
-    guessed_word = mappings.dictionary[66]
+def test_filter(env: Wordle, word_dictionary):
+    env.word = word_dictionary.dictionary[50]
+    guessed_word = word_dictionary.dictionary[66]
     result = env.evaluate_word(guessed_word)
-    remaining_words = filter_words(mappings.dictionary, guessed_word, result)
+    remaining_words = filter_words(word_dictionary.dictionary, guessed_word, result)
     assert remaining_words == [
         "ABHOR",
         "ABORD",

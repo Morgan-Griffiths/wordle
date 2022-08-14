@@ -14,14 +14,14 @@ from utils import result_from_state
 #     assert root.value != 0
 
 
-# def test_mcts_equality(env, mcts: MCTS, mcts_dict: MCTS_dict, mu_agent, config, mappings):
+# def test_mcts_equality(env, mcts: MCTS, mcts_dict: MCTS_dict, mu_agent, config, word_dictionary):
 #     state, reward, done = env.reset()
 #     print(env.word)
 #     turn = 0
 #     action = 5
-#     env.step(self.mappings.action_to_string(action))
+#     env.step(self.word_dictionary.action_to_string(action))
 #     result = state[turn][:, Embeddings.RESULT]
-#     print(self.mappings.action_to_string(action))
+#     print(self.word_dictionary.action_to_string(action))
 #     res = result_from_state(turn,state)
 #     print(res)
 #     asdf

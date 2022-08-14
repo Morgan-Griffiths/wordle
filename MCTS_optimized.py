@@ -3,7 +3,7 @@ import math
 import torch
 from globals import (
     DynamicOutputs,
-    Mappings,
+    WordDictionaries,
     PolicyOutputs,
 )
 
@@ -21,7 +21,7 @@ class MCTS_dict:
     def __init__(self, config) -> None:
         self.config = config
         self.epsilon = config.epsilon
-        self.mappings = Mappings(config.word_restriction)
+        self.word_dictionary = WordDictionaries(config.word_restriction)
         self.Nsa = defaultdict(
             lambda: 0
         )  # stores #times edge s,a was visited. R * 6 * 64 bits
@@ -101,15 +101,15 @@ class MCTS_dict:
                         len(self.Ps[s_a]), p=self.Ps[s_a]
                     )  # zero padding
                     result, reward = (
-                        self.mappings.index_result_dict[state_choice],
+                        self.word_dictionary.index_result_dict[state_choice],
                         self.Rs[s_a][state_choice],
                     )
                     # get previous state -> new state
                     next_state = state_transition(
                         state.cpu().numpy(),
-                        self.mappings.dictionary_index_to_word[action],
+                        self.word_dictionary.dictionary_index_to_word[action],
                         np.array(result),
-                        self.mappings,
+                        self.word_dictionary,
                     )
                     reward = int(reward.item())
                     state = torch.as_tensor(next_state).long()

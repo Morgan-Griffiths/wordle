@@ -4,7 +4,7 @@ import pathlib
 import pickle
 import time
 from wordle import Wordle
-from globals import CHECKPOINT, Mappings
+from globals import CHECKPOINT, WordDictionaries
 import ray
 import numpy as np
 
@@ -30,8 +30,8 @@ class MuZero:
 
     def __init__(self, config):
         self.config = config
-        self.mappings = Mappings(config.word_restriction)
-        self.env = Wordle(self.mappings)
+        self.word_dictionary = WordDictionaries(config.word_restriction)
+        self.env = Wordle(self.word_dictionary)
         np.random.seed(self.config.seed)
         torch.manual_seed(self.config.seed)
         if config.train_on_gpu:
@@ -82,7 +82,7 @@ class MuZero:
         self.training_worker = Trainer.options(
             num_cpus=0,
             num_gpus=num_gpus_per_worker if self.config.train_on_gpu else 0,
-        ).remote(self.checkpoint, self.config, self.mappings)
+        ).remote(self.checkpoint, self.config, self.word_dictionary)
         self.shared_storage_worker = SharedStorage.options(
             num_cpus=0,
             num_gpus=num_gpus_per_worker if self.config.selfplay_on_gpu else 0,
@@ -100,7 +100,7 @@ class MuZero:
             self.reanalyse_worker = Reanalyse.options(
                 num_cpus=0,
                 num_gpus=num_gpus_per_worker if self.config.reanalyse_on_gpu else 0,
-            ).remote(self.checkpoint, self.config, self.mappings)
+            ).remote(self.checkpoint, self.config, self.word_dictionary)
 
         self.self_play_workers = [
             SelfPlay.options(
@@ -110,7 +110,7 @@ class MuZero:
                 self.checkpoint,
                 self.env,
                 self.config,
-                self.mappings,
+                self.word_dictionary,
                 self.config.seed + seed,
             )
             for seed in range(self.config.num_workers)
@@ -144,7 +144,7 @@ class MuZero:
             self.checkpoint,
             self.env,
             self.config,
-            self.mappings,
+            self.word_dictionary,
             self.config.seed + self.config.num_workers,
         )
         self.test_worker.continuous_self_play.remote(
@@ -408,7 +408,9 @@ class MuZero:
             num_gpus = 0
         ray.init(num_gpus=num_gpus, ignore_reinit_error=True)
         cpu_actor = CPUActor.remote()
-        cpu_weights = cpu_actor.get_initial_weights.remote(self.config, self.mappings)
+        cpu_weights = cpu_actor.get_initial_weights.remote(
+            self.config, self.word_dictionary
+        )
         self.checkpoint["weights"], self.summary = copy.deepcopy(ray.get(cpu_weights))
 
     def __exit__(self, exc_type, exc_value, traceback):

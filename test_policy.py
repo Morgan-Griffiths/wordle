@@ -11,10 +11,11 @@ import torch
 from ML.utils import load_replay_buffer
 
 from ray_files.replay_buffer import ReplayBuffer
-from globals import Mappings, PolicyOutputs, CHECKPOINT
+from globals import WordDictionaries, PolicyOutputs, CHECKPOINT
 from ML.networks import ZeroPolicy, MuZeroNet
 from config import Config
 
+""" File for asserting that the policy function converges on a small training set """
 
 def test_policy(agent_params, training_params, config, per_buffer):
     next_batch = per_buffer.get_batch.remote()
@@ -151,7 +152,7 @@ if __name__ == "__main__":
         "emb_size": 16,
     }
     config.batch_size = args.batch_size
-    mappings = Mappings(config.word_restriction)
+    word_dictionary = WordDictionaries(config.word_restriction)
     buffer_info = load_replay_buffer()
     checkpoint = copy.copy(CHECKPOINT)
     checkpoint["num_played_steps"] = buffer_info["num_played_steps"]

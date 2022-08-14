@@ -9,8 +9,8 @@ class CPUActor:
     def __init__(self):
         pass
 
-    def get_initial_weights(self, config, mappings):
-        model = MuZeroNet(config, mappings)
+    def get_initial_weights(self, config, word_dictionary):
+        model = MuZeroNet(config, word_dictionary)
         if config.load_dynamic_weights:
             print(f"Loading dynamic weights from  {config.dynamics_weight_path}")
             checkpoint = torch.load(config.dynamics_weight_path, map_location="cpu")

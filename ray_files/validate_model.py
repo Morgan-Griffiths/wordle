@@ -5,7 +5,7 @@ from ML.utils import strip_module, is_net_ddp
 from globals import (
     DynamicOutputs,
     Embeddings,
-    Mappings,
+    WordDictionaries,
     PolicyOutputs,
 )
 import numpy as np
@@ -24,9 +24,9 @@ class ValidateModel:
         self.config = config
         self.config.add_exploration_noise = False
         self.config.train_on_gpu = False
-        self.mappings = Mappings(config.word_restriction)
+        self.word_dictionary = WordDictionaries(config.word_restriction)
         # Initialize the network
-        self.model = MuZeroNet(self.config, self.mappings)
+        self.model = MuZeroNet(self.config, self.word_dictionary)
         self.model.set_weights(strip_module(checkpoint["weights"]))
         self.model.eval()
         # if is_net_ddp(self.model):
@@ -108,7 +108,7 @@ class ValidateModel:
                         )
                         actions = [action for action in root.children.keys()]
                         action = actions[np.argmax(visit_counts)]
-                        chosen_word = self.mappings.action_to_string(action)
+                        chosen_word = self.word_dictionary.action_to_string(action)
                         model_outputs: PolicyOutputs = self.model.policy(
                             torch.tensor(state.copy()).long().unsqueeze(0)
                         )
@@ -118,7 +118,7 @@ class ValidateModel:
                         print("chosen_word", chosen_word)
                         print(
                             "highest prob word",
-                            self.mappings.action_to_string(
+                            self.word_dictionary.action_to_string(
                                 np.argmax(
                                     model_outputs.probs[
                                         : self.config.action_space
@@ -134,7 +134,7 @@ class ValidateModel:
                         state, reward, done = env.step(chosen_word)
                         print(env.visualize_state())
                         print(f"Next state {state[env.turn-1,:,Embeddings.RESULT]}")
-                        result_index = self.mappings.result_index_dict[
+                        result_index = self.word_dictionary.result_index_dict[
                             tuple(state[env.turn - 1, :, Embeddings.RESULT])
                         ]
                         print(
@@ -174,7 +174,7 @@ class ValidateModel:
                         )
                         actions = [action for action in root.children.keys()]
                         action = actions[np.argmax(visit_counts)]
-                        chosen_word = self.mappings.action_to_string(action)
+                        chosen_word = self.word_dictionary.action_to_string(action)
                         state, reward, done = env.step(chosen_word)
                     print(env.visualize_state())
         except KeyboardInterrupt:

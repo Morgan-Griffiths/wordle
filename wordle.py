@@ -1,19 +1,19 @@
 import numpy as np
 from copy import deepcopy
-from globals import Embeddings, Tokens, alphabet, State, Mappings
+from globals import Embeddings, Tokens, alphabet, State, WordDictionaries
 from collections import defaultdict
 from prettytable import PrettyTable
 
 
 class Wordle:
-    def __init__(self, mappings: Mappings) -> None:
+    def __init__(self, word_dictionary: WordDictionaries) -> None:
         super().__init__()
-        self.mappings = mappings
+        self.word_dictionary = word_dictionary
         self.gamma = 0.05
         self.reset()
 
     def reset(self):
-        self.word = np.random.choice(self.mappings.target_dictionary)
+        self.word = np.random.choice(self.word_dictionary.target_dictionary)
         self.alphabet = {letter: Tokens.UNKNOWN for letter in alphabet}
         self.turn = 0
         self.state = np.zeros(State.SHAPE, dtype=np.int8)
@@ -24,9 +24,9 @@ class Wordle:
 
     def step(self, word):
         word = word.lower()
-        if word not in self.mappings.dictionary_word_to_index:
+        if word not in self.word_dictionary.dictionary_word_to_index:
             raise ValueError(f"{word.title()} is not contained in the dictionary")
-        self.words.append(self.mappings.dictionary_word_to_index[word])
+        self.words.append(self.word_dictionary.dictionary_word_to_index[word])
         result = self.evaluate_word(word)
         self.update_alphabet(word, result)
         self.increment_turn()
@@ -72,7 +72,7 @@ class Wordle:
             self.update_state(
                 slot=i,
                 result=update,
-                letter=self.mappings.alphabet_dict[letter],
+                letter=self.word_dictionary.alphabet_dict[letter],
                 turn=self.turn,
             )
             letter_result[i] = update
@@ -94,14 +94,14 @@ class Wordle:
             for row in range(5):
                 letter = self.state[turn, row, Embeddings.LETTER]
                 result = self.state[turn, row, Embeddings.RESULT]
-                row_items.append(self.mappings.index_to_letter_dict[letter])
-                row_items.append(self.mappings.readable_result_dict[int(result)])
+                row_items.append(self.word_dictionary.index_to_letter_dict[letter])
+                row_items.append(self.word_dictionary.readable_result_dict[int(result)])
             table.add_row(row_items)
         print(f"Target word {self.word}")
         print(table)
 
     def copy(self):
-        env = Wordle(self.mappings)
+        env = Wordle(self.word_dictionary)
         env.word = deepcopy(self.word)
         env.state = deepcopy(self.state)
         env.game_over = deepcopy(self.game_over)

@@ -158,8 +158,8 @@ CHECKPOINT = {
 alphabet = "".join("-abcdefghijklmnopqrstuvwxzy".lower().split())
 
 
-class Mappings:
-    """Class to hold wordle result and word mappings"""
+class WordDictionaries:
+    """Class to hold wordle result and word dictionaries"""
 
     def __init__(self, word_restriction=None):
         # RESULTS

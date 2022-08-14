@@ -6,7 +6,7 @@ import ray
 import torch
 
 from ML.networks import MuZeroNet
-from globals import Mappings, PolicyOutputs, State
+from globals import WordDictionaries, PolicyOutputs, State
 
 
 @ray.remote
@@ -17,7 +17,7 @@ class ReplayBuffer:
 
     def __init__(self, initial_checkpoint, initial_buffer, config):
         self.config = config
-        self.mappings = Mappings(config.word_restriction)
+        self.word_dictionary = WordDictionaries(config.word_restriction)
         self.buffer = copy.deepcopy(initial_buffer)
         self.num_played_games = initial_checkpoint["num_played_games"]
         self.num_played_steps = initial_checkpoint["num_played_steps"]
@@ -318,7 +318,7 @@ class ReplayBuffer:
         actions.append(game_history.action_history[state_index])
         word_targets.append(game_history.word_history[state_index])
         result_targets.append(
-            self.mappings.result_index_dict[
+            self.word_dictionary.result_index_dict[
                 tuple(game_history.result_history[state_index])
             ]
         )

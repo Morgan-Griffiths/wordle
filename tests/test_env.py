@@ -1,5 +1,5 @@
 from tokenize import Token
-from globals import Embeddings, Mappings, Tokens, State
+from globals import Embeddings, WordDictionaries, Tokens, State
 import numpy as np
 
 from wordle import Wordle
@@ -13,34 +13,34 @@ def test_init(env: Wordle):
     assert isinstance(env.word, str)
 
 
-def test_state(env: Wordle, mappings: Mappings):
+def test_state(env: Wordle, word_dictionary: WordDictionaries):
     env.word = "raphe"
     assert np.array_equal(env.state, np.zeros(State.SHAPE, dtype=np.int8))
     state, rewards, done = env.step("hello")
     comparison_state = np.zeros(State.SHAPE, dtype=np.int8)
     turn = 0
-    comparison_state[turn, 0, Embeddings.LETTER] = mappings.alphabet_dict["h"]
+    comparison_state[turn, 0, Embeddings.LETTER] = word_dictionary.alphabet_dict["h"]
     comparison_state[turn, 0, Embeddings.RESULT] = Tokens.CONTAINED
-    comparison_state[turn, 1, Embeddings.LETTER] = mappings.alphabet_dict["e"]
+    comparison_state[turn, 1, Embeddings.LETTER] = word_dictionary.alphabet_dict["e"]
     comparison_state[turn, 1, Embeddings.RESULT] = Tokens.CONTAINED
-    comparison_state[turn, 2, Embeddings.LETTER] = mappings.alphabet_dict["l"]
+    comparison_state[turn, 2, Embeddings.LETTER] = word_dictionary.alphabet_dict["l"]
     comparison_state[turn, 2, Embeddings.RESULT] = Tokens.MISSING
-    comparison_state[turn, 3, Embeddings.LETTER] = mappings.alphabet_dict["l"]
+    comparison_state[turn, 3, Embeddings.LETTER] = word_dictionary.alphabet_dict["l"]
     comparison_state[turn, 3, Embeddings.RESULT] = Tokens.MISSING
-    comparison_state[turn, 4, Embeddings.LETTER] = mappings.alphabet_dict["o"]
+    comparison_state[turn, 4, Embeddings.LETTER] = word_dictionary.alphabet_dict["o"]
     comparison_state[turn, 4, Embeddings.RESULT] = Tokens.MISSING
     assert np.array_equal(env.state, comparison_state)
     state, rewards, done = env.step("wrath")
     turn = 1
-    comparison_state[turn, 0, Embeddings.LETTER] = mappings.alphabet_dict["w"]
+    comparison_state[turn, 0, Embeddings.LETTER] = word_dictionary.alphabet_dict["w"]
     comparison_state[turn, 0, Embeddings.RESULT] = Tokens.MISSING
-    comparison_state[turn, 1, Embeddings.LETTER] = mappings.alphabet_dict["r"]
+    comparison_state[turn, 1, Embeddings.LETTER] = word_dictionary.alphabet_dict["r"]
     comparison_state[turn, 1, Embeddings.RESULT] = Tokens.CONTAINED
-    comparison_state[turn, 2, Embeddings.LETTER] = mappings.alphabet_dict["a"]
+    comparison_state[turn, 2, Embeddings.LETTER] = word_dictionary.alphabet_dict["a"]
     comparison_state[turn, 2, Embeddings.RESULT] = Tokens.CONTAINED
-    comparison_state[turn, 3, Embeddings.LETTER] = mappings.alphabet_dict["t"]
+    comparison_state[turn, 3, Embeddings.LETTER] = word_dictionary.alphabet_dict["t"]
     comparison_state[turn, 3, Embeddings.RESULT] = Tokens.MISSING
-    comparison_state[turn, 4, Embeddings.LETTER] = mappings.alphabet_dict["h"]
+    comparison_state[turn, 4, Embeddings.LETTER] = word_dictionary.alphabet_dict["h"]
     comparison_state[turn, 4, Embeddings.RESULT] = Tokens.CONTAINED
     assert np.array_equal(env.state, comparison_state)
 

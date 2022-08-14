@@ -7,15 +7,18 @@ from torch import optim
 import numpy as np
 from ML.networks import StateActionTransition
 from config import Config
-from globals import DynamicOutputs, Mappings, CHECKPOINT
+from globals import DynamicOutputs, WordDictionaries, CHECKPOINT
 from torch.nn import CrossEntropyLoss
 import torch.nn.functional as F
 from main import load_replay_buffer
 from ray_files.replay_buffer import ReplayBuffer
 from wordle import Wordle
 
+""" File for asserting that the dynamics function converges on a small training set """
 
-def test_state_transition(net, training_params, agent_params, per_buffer, mappings):
+def test_state_transition(
+    net, training_params, agent_params, per_buffer, word_dictionary
+):
     optimizer = optim.AdamW(
         net.parameters(), lr=agent_params["learning_rate"], weight_decay=3e-2
     )
@@ -51,10 +54,10 @@ def test_state_transition(net, training_params, agent_params, per_buffer, mappin
         sys.stdout.flush()
         sys.stdout.write(f", loss {np.mean(score_window):.4f}")
         sys.stdout.flush()
-    validation(net, batch, mappings)
+    validation(net, batch, word_dictionary)
 
 
-def validation(network, batch, mappings):
+def validation(network, batch, word_dictionary):
     (
         state_batch,
         action_batch,
@@ -72,7 +75,7 @@ def validation(network, batch, mappings):
             try:
                 sample_idx = int(input(f"Pick a number between 0-{len(state_batch)-1}"))
             except Exception as e:
-                print(f'Invalid number {e}')
+                print(f"Invalid number {e}")
                 continue
             state, action = state_batch[sample_idx], action_batch[sample_idx]
             target_result = result_batch[sample_idx]
@@ -87,9 +90,13 @@ def validation(network, batch, mappings):
                     outputs.state_probs[0][target_result.item()],
                 )
                 print("winning state prob", outputs.state_probs[0][-1])
-                print("target_result", mappings.index_result_dict[target_result.item()])
+                print(
+                    "target_result",
+                    word_dictionary.index_result_dict[target_result.item()],
+                )
     except KeyboardInterrupt:
         return
+
 
 if __name__ == "__main__":
 
@@ -129,9 +136,9 @@ if __name__ == "__main__":
     checkpoint["num_reanalysed_games"] = buffer_info["num_reanalysed_games"]
     per_buffer = ReplayBuffer.remote(checkpoint, buffer_info["buffer"], config)
 
-    mappings = Mappings(config.word_restriction)
-    env = Wordle(mappings)
-    mu_zero = StateActionTransition(mappings)
+    word_dictionary = WordDictionaries(config.word_restriction)
+    env = Wordle(word_dictionary)
+    mu_zero = StateActionTransition(word_dictionary)
 
     network_path = "weights/dynamics"
     agent_params = {
@@ -146,4 +153,6 @@ if __name__ == "__main__":
         "criterion": CrossEntropyLoss,
         "load_path": network_path,
     }
-    test_state_transition(mu_zero, training_params, agent_params, per_buffer, mappings)
+    test_state_transition(
+        mu_zero, training_params, agent_params, per_buffer, word_dictionary
+    )

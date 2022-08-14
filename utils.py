@@ -2,14 +2,14 @@ import torch
 import copy
 import numpy as np
 from config import Config
-from globals import Dims, Embeddings, Mappings
+from globals import Dims, Embeddings, WordDictionaries
 from prettytable import PrettyTable
 
 
-def result_from_state(turn, state, mappings: Mappings):
+def result_from_state(turn, state, word_dictionary: WordDictionaries):
     try:
         result = state[turn][:, Embeddings.RESULT]
-        return mappings.result_index_dict[tuple(result)]
+        return word_dictionary.result_index_dict[tuple(result)]
     except:
         return -1
 
@@ -23,10 +23,12 @@ def debug(func):
 
 
 def state_transition(
-    state: np.array, word: str, result: np.array, mappings: Mappings
+    state: np.array, word: str, result: np.array, word_dictionary: WordDictionaries
 ) -> np.array:
     new_state = copy.deepcopy(state)
-    encoded_word = np.array([mappings.alphabet_dict[letter] for letter in word.lower()])
+    encoded_word = np.array(
+        [word_dictionary.alphabet_dict[letter] for letter in word.lower()]
+    )
     mask = np.where(new_state == 0)[1]
     turn = min(mask)
     new_state[:, turn, :, Embeddings.LETTER] = encoded_word
