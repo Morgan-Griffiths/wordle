@@ -29,7 +29,7 @@ from config import Config
 
 class Storage:
     def __init__(self, config, word_dictionary):
-        self.mapping = word_dictionary
+        self.word_dictionary = word_dictionary
         self.actions = np.zeros(shape=(config.num_dynamics_examples), dtype=np.uint16)
         self.states = np.zeros(
             shape=(config.num_dynamics_examples, 6, 5, 2), dtype=np.uint8
@@ -43,7 +43,7 @@ class Storage:
             if self.n >= self.max_n:
                 break
             self.actions[self.n] = action
-            self.labels[self.n] = self.mapping.result_index_dict[tuple(label)]
+            self.labels[self.n] = self.word_dictionary.result_index_dict[tuple(label)]
             self.states[self.n, :, :, :] = state
             self.n += 1
         return self.n >= self.max_n
@@ -57,8 +57,7 @@ class Storage:
         return self.states, self.actions, self.labels
 
 
-def randomly_sample_games(shared_storage, config):
-    word_dictionary = WordDictionaries(config.word_restriction)
+def randomly_sample_games(shared_storage, config, word_dictionary):
     env = Wordle(word_dictionary)
     # TODO FIx progress bar
     for _ in tqdm(range(config.num_dynamics_examples)):
@@ -69,6 +68,9 @@ def randomly_sample_games(shared_storage, config):
         states.append(state.copy())
         while not done:
             action = np.random.randint(1, config.action_space + 1)
+            print(word_dictionary.dictionary_word_to_index)
+            print(action, word_dictionary.action_to_string(action))
+
             state, reward, done = env.step(word_dictionary.action_to_string(action))
             # Next batch
             labels.append(state[env.turn - 1, :, Embeddings.RESULT])
@@ -87,7 +89,7 @@ def create_dataset(num_examples=10000, num_workers=2):
     config.num_dynamics_examples = num_examples
     config.num_workers = num_workers
     shared_storage = Storage(config, word_dictionary)
-    randomly_sample_games(shared_storage, config)
+    randomly_sample_games(shared_storage, config, word_dictionary)
     shared_storage.save_state()
 
 
@@ -172,9 +174,10 @@ def train_epoch(dataloader, model, loss_fn, optimizer):
         state = state.squeeze(1).long()
         label = label.squeeze(-1)
         print(action.shape, state.shape, label.shape)
-        print(action.get_device())
-        print(next(model.parameters()).device)
-        pred = model.dynamics(state, action)
+        # print(action.get_device())
+        # print(next(model.parameters()).device)
+        pred = model(state, action)
+        # print(pred.state_logprobs[0], label[0])
         loss = loss_fn(pred.state_logprobs, label)
 
         optimizer.zero_grad()
@@ -184,13 +187,14 @@ def train_epoch(dataloader, model, loss_fn, optimizer):
     return {"loss": losses}
 
 
-def train_func(config, mapping):
+def train_func(inputs):
+    config, word_dictionary = inputs
     training_data = DynamicInMemory()
-    train_loader = DataLoader(training_data, batch_size=2048, shuffle=True)
+    train_loader = DataLoader(training_data, batch_size=128, shuffle=True)
     train_loader = train.torch.prepare_data_loader(train_loader)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     config.train_on_gpu = False
-    model = MuZeroNet(config, mapping)
+    model = MuZeroNet(config, word_dictionary)._dynamics
     # model.set_weights(copy.deepcopy(initial_checkpoint["weights"]))
     # model.to(device)
     model = train.torch.prepare_model(model)
@@ -208,7 +212,7 @@ def train_func(config, mapping):
     results = []
 
     for _ in range(config.num_warmup_training_steps):
-        result = train_epoch(device, train_loader, model, loss_fn, optimizer)
+        result = train_epoch(train_loader, model, loss_fn, optimizer)
         train.report(**result)
         results.append(result)
 
@@ -220,7 +224,7 @@ class PrintingCallback(TrainingCallback):
         print(results)
 
 
-def train_linear(num_workers=2, use_gpu=False):
+def train_cpu(num_workers=2, use_gpu=False):
     trainer = Trainer(
         backend="torch",
         num_workers=num_workers,
@@ -228,17 +232,10 @@ def train_linear(num_workers=2, use_gpu=False):
         logdir="./ray_\results",
     )
     config = Config()
-    mapping = WordDictionaries(config.word_restriction)
+    word_dictionary = WordDictionaries(config.word_restriction)
     trainer.start()
-    results = trainer.run(
-        train_func,
-        config,
-        mapping,
-        callbacks=[PrintingCallback(), JsonLoggerCallback()],
-    )
+    results = trainer.run(train_func, (config, word_dictionary))
     trainer.shutdown()
-
-    return results
 
 
 def setup_world(rank, world_size):
@@ -248,9 +245,9 @@ def setup_world(rank, world_size):
     dist.init_process_group("gloo", rank=rank, world_size=world_size)
 
 
-def train_network(id, data_dict, config, mapping, training_params):
+def train_network(id, data_dict, config, word_dictionary, training_params):
     print(f"Process {id}")
-    model = MuZeroNet(config, mapping)
+    model = MuZeroNet(config, word_dictionary)
     if training_params["resume"]:
         print(f"Loading weights from {training_params['load_path']}")
         load_weights(model, training_params["load_path"])
@@ -337,7 +334,7 @@ def train_multi():
     world_size = max(torch.cuda.device_count(), 1)
     print(f"World size {world_size}")
     config = Config()
-    mapping = WordDictionaries(config.word_restriction)
+    word_dictionary = WordDictionaries(config.word_restriction)
 
     training_params = {
         "resume": False,
@@ -352,7 +349,7 @@ def train_multi():
         args=(
             data_dict,
             config,
-            mapping,
+            word_dictionary,
             training_params,
         ),
         nprocs=world_size,
@@ -386,15 +383,18 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "-c",
-        "--create",
-        dest="create",
+        "--create-dataset",
+        dest="create_dataset",
         help="Create the dataset",
         action="store_true",
         default=False,
     )
 
     args = parser.parse_args()
-    if args.create:
+    if args.create_dataset:
         create_dataset()
     else:
-        train_multi()
+        if torch.cuda.is_available():
+            train_multi()
+        else:
+            train_cpu()

@@ -17,6 +17,7 @@ from config import Config
 
 """ File for asserting that the policy function converges on a small training set """
 
+
 def test_policy(agent_params, training_params, config, per_buffer):
     next_batch = per_buffer.get_batch.remote()
     index_batch, batch = ray.get(next_batch)
@@ -96,7 +97,9 @@ def validation(network, per_buffer):
         print("target_reward", target_reward)
         with torch.no_grad():
             policy_outputs: PolicyOutputs = network(state)
-            print("action", policy_outputs.action)
+            print("desired policy", policy_batch[sample_idx])
+            print("probs", policy_outputs.probs)
+            print("chosen action", policy_outputs.action)
             print("value", policy_outputs.value)
 
 
@@ -158,5 +161,7 @@ if __name__ == "__main__":
     checkpoint["num_played_steps"] = buffer_info["num_played_steps"]
     checkpoint["num_played_games"] = buffer_info["num_played_games"]
     checkpoint["num_reanalysed_games"] = buffer_info["num_reanalysed_games"]
-    per_buffer = ReplayBuffer.remote(checkpoint, buffer_info["buffer"], config)
+    per_buffer = ReplayBuffer.remote(
+        checkpoint, buffer_info["buffer"], config, word_dictionary
+    )
     test_policy(agent_params, training_params, config, per_buffer)

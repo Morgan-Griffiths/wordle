@@ -330,11 +330,10 @@ class MuZero:
         """
         # Load checkpoint
         if checkpoint_path:
-            parent_dir = pathlib.Path(__file__).resolve().parents[0]
+            parent_dir = pathlib.Path(__file__).resolve().parents[1]
             checkpoint_path = pathlib.Path(parent_dir / checkpoint_path)
             self.checkpoint = torch.load(checkpoint_path, map_location="cpu")
             print(f"\nUsing checkpoint from {checkpoint_path}")
-
         # Load replay buffer
         if replay_buffer_path:
             replay_buffer_path = pathlib.Path(replay_buffer_path)
@@ -412,6 +411,7 @@ class MuZero:
             self.config, self.word_dictionary
         )
         self.checkpoint["weights"], self.summary = copy.deepcopy(ray.get(cpu_weights))
+        return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         ray.shutdown()

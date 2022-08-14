@@ -14,7 +14,6 @@ from ray_files.replay_buffer import ReplayBuffer
 from config import Config
 from wordle import Wordle
 from globals import CHECKPOINT, WordDictionaries
-from create_dynamic_dataset import create_dataset
 
 
 def play_wordle():

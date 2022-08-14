@@ -363,16 +363,16 @@ class Reanalyse:
     See paper appendix Reanalyse.
     """
 
-    def __init__(self, initial_checkpoint, config, mapping):
+    def __init__(self, initial_checkpoint, config, word_dictionary):
         self.config = config
-        self.mapping = mapping
+        self.word_dictionary = word_dictionary
 
         # Fix random generator seed
         np.random.seed(self.config.seed)
         torch.manual_seed(self.config.seed)
 
         # Initialize the network
-        self.model = MuZeroNet(self.config, self.mapping)
+        self.model = MuZeroNet(self.config, self.word_dictionary)
         self.model.set_weights(initial_checkpoint["weights"])
         # self.model.to(torch.device("cuda" if self.config.reanalyse_on_gpu else "cpu")) # uncomment for gpu
         self.model.eval()

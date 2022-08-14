@@ -9,7 +9,6 @@ from globals import (
 )
 from utils import state_transition
 from ML.networks import MuZeroNet
-from memory_profiler import profile
 
 """ 
 OO implementation of MCTS
@@ -23,6 +22,8 @@ part of the tree, we sample from P(S').
 Sample action -> sample state, see if state exists, else new node. 
 When reward is 1 or -1, propogate 
 
+C_base = 19652
+C_init = 1.25
 Action selection
 a_t = argmax (Q(s,a) + U(s,a)) 
 C: exploration rate
@@ -30,6 +31,10 @@ U: C(s) * P(s,a) * sqrt(N(s)) / 1 + N(s,a)
 N(s) = parent visit count
 C(s) = log((1 + N(s) + C_base)/C_base) + c_init
 W(s) = total action value
+
+In terms of reducing tree size:
+i have a few options. i expand over all the nodes like before, but renormalize the chosen nodes and change the rest to 0. 
+Or i only expand up to the desired number, and then on the learning pass, i pad out the action tree in creating the policy targets
 """
 
 
@@ -40,10 +45,6 @@ def top_k_actions(probs, k):
     additional_indicies = np.random.choice(remaining, k)
     combined = np.concatenate([highest_indicies, additional_indicies])
     freqs = probs[combined]
-
-
-""" i have a few options. i expand over all the nodes like before, but renormalize the chosen nodes and change the rest to 0. 
-Or i only expand up to the desired number, and then on the learning pass, i pad out the action tree in creating the policy targets"""
 
 
 def create_root(state, reward):
@@ -68,7 +69,7 @@ def select_state(outputs):
     # sample state after
     state_choice = np.random.choice(len(state_probs), p=state_probs)  # zero padding
     result, reward = (
-        i[state_choice],
+        [state_choice],
         reward_outcomes[state_choice],
     )
     return result, reward
@@ -97,6 +98,8 @@ class Node:
         return self.value_sum / self.visit_count
 
     def expand(self, turn: int, action_space: int, action_probs: np.array):
+        """Expand the node to all actions. Turn is passed in for future use.
+        Because it will be useful to reduce the action space early in the tree."""
         # num_actions = actions_per_turn(turn,action_space)
         indicies = np.arange(action_space)
         actions = indicies + 1
@@ -113,9 +116,6 @@ class Node:
             self.children[a].prior = self.children[a].prior * (1 - frac) + n * frac
 
     def select_child(self, config):
-        # print("lenght", len(self.children))
-        # for action, child in self.children.items():
-        #     print("check", action, child)
         _, action, child = max(
             (self.ucb_score(child, config), action, child)
             for action, child in self.children.items()
@@ -139,14 +139,11 @@ class Node:
         return prior_score + value_score
 
     def backprop(self, value, discount_rate):
-        # print("backprop", value)
         node = self
         while node.parent:
             node.value_sum += value
             node.visit_count += 1
             value = node.reward + discount_rate * value
-            # print("node attrs", node.value, node.reward)
-            # print("value_sum", node.value_sum)
             node = node.parent
         node.value_sum += value
         node.visit_count += 1
@@ -182,8 +179,6 @@ class MCTS:
                         node.expand(
                             turn + sim_turn, self.config.action_space, node.action_probs
                         )
-                        # action = np.random.randint(self.config.action_space) + 1
-                        # node = node.children[action]
                     if self.config.add_exploration_noise:
                         root.add_exploration_noise(
                             dirichlet_alpha=self.config.root_dirichlet_alpha,
@@ -290,9 +285,6 @@ class GameHistory:
         assert (
             len(states) == len(actions) == len(result_targets) == len(reward_targets)
         ), f"Improper lengths {print(len(states), len(actions), len(result_targets), len(reward_targets))}"
-        # np.save("word_data/states.npy", states)
-        # np.save("word_data/actions.npy", actions)
-        # np.save("word_data/reward_targets.npy", reward_targets)
         states = torch.as_tensor(states).long()
         actions = torch.as_tensor(actions).long()
         result_targets = torch.stack(result_targets).long()

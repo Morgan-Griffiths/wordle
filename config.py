@@ -26,7 +26,7 @@ class Config:
     beta_2 = 0.95
     L2 = 0.1
     # WORDLE
-    word_restriction = 10
+    word_restriction = 20  # should be == action space. For numbers below 2309
     # PER BUFFER
     batch_size = 4096
     num_unroll_steps = 6
@@ -41,7 +41,7 @@ class Config:
     checkpoint_interval = 5
     discount_rate = 0.85
     epsilon = 0.5
-    action_space = 10  # 2309
+    action_space = 20  # 2309
     value_loss_weight = 0.25
     weight_decay = 0.1
     lr_init = 3e-3
@@ -51,14 +51,14 @@ class Config:
     add_exploration_noise = True
     root_exploration_fraction = 0.25
     root_dirichlet_alpha = 0.25
-    num_simulations = 50
+    num_simulations = 100
     max_simulations = 100
     revisit_policy_search_rate = 0
     self_play_delay = 0  # Number of seconds to wait after each played game
     training_delay = 0  # Number of seconds to wait after each training step
     ratio = None  # Desired training steps per self played step ratio. Equivalent to a synchronous version, training can take much longer. Set it to None to disable it
     temperature_threshold = None  # Number of moves before dropping the temperature given by visit_softmax_temperature_fn to 0 (ie selecting the best action). If None, visit_softmax_temperature_fn is used every time
-    num_workers = 8  # Number of simultaneous threads/workers self-playing to feed the replay buffer
+    num_workers = 2  # Number of simultaneous threads/workers self-playing to feed the replay buffer
     training_steps = 500
     td_steps = 6
     reanalyse_on_gpu = True

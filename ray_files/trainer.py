@@ -263,7 +263,7 @@ class Trainer:
             .unsqueeze(1)
         )
         value_loss = F.smooth_l1_loss(
-            reward_batch, policy_outputs.value, reduction="none"
+            policy_outputs.value, reward_batch, reduction="none"
         )
         actor_loss = policy_loss + value_loss
 

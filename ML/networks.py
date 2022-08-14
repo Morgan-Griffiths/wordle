@@ -331,17 +331,17 @@ class ZeroPolicy(nn.Module):
 
 
 class MuZeroNet(AbstractNetwork):
-    def __init__(self, config, mapping):
+    def __init__(self, config, word_dictionary):
         super(MuZeroNet, self).__init__()
         self.config = config
         if config.train_on_gpu:
             self._policy = torch.nn.DataParallel(ZeroPolicy(config))
             self._representation = torch.nn.DataParallel(StateEncoder(config))
-            self._dynamics = torch.nn.DataParallel(StateActionTransition(mapping))
+            self._dynamics = torch.nn.DataParallel(StateActionTransition(word_dictionary))
         else:
             self._policy = ZeroPolicy(config)
             self._representation = StateEncoder(config)
-            self._dynamics = StateActionTransition(mapping)
+            self._dynamics = StateActionTransition(word_dictionary)
 
     def __call__(self, state, action):
         return self._dynamics(state, action)

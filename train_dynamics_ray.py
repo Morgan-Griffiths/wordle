@@ -295,6 +295,7 @@ class MuDyno:
             self.config, self.word_dictionary
         )
         self.checkpoint["weights"], self.summary = copy.deepcopy(ray.get(cpu_weights))
+        return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         ray.shutdown()

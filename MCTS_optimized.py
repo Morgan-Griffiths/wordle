@@ -10,11 +10,11 @@ from globals import (
 from utils import state_transition, result_from_state
 from ML.networks import MuZeroNet
 from collections import defaultdict
-from memory_profiler import profile
 
 """ 
 Optimized implementation of MCTS using dictionaries. Uses 1/2 the space with 30% speedup.
 """
+
 
 class MCTS_dict:
     """
@@ -48,13 +48,6 @@ class MCTS_dict:
             action = np.random.randint(0, self.config.action_space)
         return action
 
-    # def select_action(self, s, turn, reward):
-    #     ucbs = np.array(
-    #         [self.ucb_score(s, a, reward) for a in range(self.config.action_space)]
-    #     )
-    #     probs = ucbs / np.sum(ucbs)
-    #     return np.random.choice(np.arange(0, self.config.action_space), p=probs)
-
     def ucb_score(self, s, a, reward, probs) -> float:
         s_a = s + str(a)
         pb_c = (
@@ -84,7 +77,6 @@ class MCTS_dict:
                 while reward not in [1, -1]:
                     self.Ns[s_key] += 1
                     outputs: PolicyOutputs = agent.policy(state.to(device))
-                    # self.Pa[s_key] = outputs.probs[0]
                     action_idx = self.select_action(
                         s_key, sim_turn, reward, outputs.probs[0]
                     )
@@ -128,7 +120,6 @@ class MCTS_dict:
                 "max_tree_depth": max_tree_depth,
                 "root_predicted_value": self.Vs[state_path[0]] / self.Ns[state_path[0]],
             }
-            # self.decay_epsilon()
         return extra_info
 
     def backprop(self, value, state_path, reward):

@@ -96,7 +96,7 @@ class ValidateModel:
                         torch.tensor(state.copy()).long().unsqueeze(0)
                     )
                     while not done:
-                        root, mcts_info = MCTS(self.config).run(
+                        root, mcts_info = MCTS(self.config, self.word_dictionary).run(
                             self.model,
                             state,
                             reward,
@@ -162,7 +162,7 @@ class ValidateModel:
                         #     torch.tensor(state.copy()).long().unsqueeze(0)
                         # )
                         # while not done:
-                        root, mcts_info = MCTS(self.config).run(
+                        root, mcts_info = MCTS(self.config, self.word_dictionary).run(
                             self.model, state, reward, env.turn
                         )
                         self.plot_mcts(root)

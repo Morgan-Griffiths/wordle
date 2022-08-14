@@ -75,10 +75,14 @@ def load_model_menu(muzero):
         while replay_buffer_path and not pathlib.Path(replay_buffer_path).is_file():
             replay_buffer_path = input("Invalid replay buffer path. Try again: ")
     else:
-        checkpoint_path = options[choice] / "model.checkpoint"
+        if os.path.isdir(options[choice]):
+            checkpoint_path = options[choice] / "model.checkpoint"
+        else:
+            checkpoint_path = options[choice]
+        print("checkpoint_path", checkpoint_path)
         # replay_buffer_path = options[choice] / "replay_buffer.pkl"
         replay_buffer_path = (
-            pathlib.Path(__file__).resolve().parents[0]
+            pathlib.Path(__file__).resolve().parents[1]
             / "replay_buffer_storage"
             / "replay_buffer.pkl"
         )
