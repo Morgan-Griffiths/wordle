@@ -3,18 +3,6 @@
 This is a deep learning environment for training bots on the game wordle. Why have fun when you can let your computer have fun for you!
 ## Wordle
 
-<<<<<<< HEAD
-Wordle is a word game where you have 6 tries to guess a hidden 5 letter word. Each guess you make gives you information about what the hidden word is. There are 3 results possible for each letter: 
-1. the letter is in the word AND in the right spot. 
-2. the letter is in the word but not in the right spot.
-3. the letter is not in the word
-
-Based on this information, if you choose your words wisely, you can deduce the hidden word.
-# test
-=======
-https://www.nytimes.com/games/wordle/index.html
->>>>>>> 3050da25a28d94a1a98bd8a374c6f9ef8008dc12
-
 Wordle is a word game where you have 6 tries to guess a hidden 5 letter word. Each guess you make gives you information about what the hidden word is. There are 3 results possible for each letter: 
 1. the letter is in the word AND in the right spot. 
 2. the letter is in the word but not in the right spot.
@@ -51,17 +39,11 @@ I've found that ray doesn't always ultilize my gpus like i would want, so i impl
 - train_dynamics_ddp.py - This is parallelized with pytorch DDP
 - train_dynamics_ray.py - This is parallelized with ray
 
-- test_dynamics.py - 
-- test_policy.py - 
+#### Asserting learning
+- test_dynamics.py - asserts dynamics function converges
+- test_policy.py - asserts policy function converges
 
-<<<<<<< HEAD
-Wordle is a non stationary, imperfect information game. 
-
-Traditionally muzero maps (s,a) -> s' in a deterministic fashion. However, in non-stationary, imperfection informations games, we must map (s,a) -> distribution over s'.
-In wordle, given a state s, and action (5 letter word) a, there is a 243 length distribution (3^5) over a (5,3) result vector. 5 letters [0,27] and 3 states [0,3]. With a padding dimension at 0. Then sample the 243 length vector and combine with s to make s'. 
-=======
->>>>>>> 3050da25a28d94a1a98bd8a374c6f9ef8008dc12
-
+#### Main.py
 - main.py contains the following abilities
     - train the actor, critic and dynamics function via self play
     - load a model
@@ -142,9 +124,19 @@ Then when we sample S' we will index the corresponding reward.
 Learning the state transition function does not rely on the actor. This is because the goal of the dynamics function is the learn the transition function for any action in any state. Because of this, we can train the dynamics function first on randomly sampled games. This is a huge time saver, because the policy is only as good as the dynamics function. If the dynamics function erroneously reports that we have lost the game, even though we choose the right action, the policy will be updated improperly.
 
 Therefore, it is recommended to throughly train the dynamics function first. And then train the actor and critic.
+
 ## Encodings
 
 To make wordle machine digestible we have to convert the game state into numbers. 
+
+If we take the following image
+
+![img](./images/wordle.png "Wordle")
+
+letter encoding will be
+[5,14,1,3,20]
+result encoding will be
+[2,1,3,3,2]
 
 Each letter is encoded via the following format. With 0 reserved for padding
 
@@ -186,15 +178,6 @@ Each letter in the word has an associated result.
 | 1 | Missing (letter not in word)|
 | 2 | Contained (letter present in word, but in a different position)|
 | 3 | Exact (letter present and in that exact location)|
-
-If we take the following image
-
-![img](./images/wordle.png "Wordle")
-
-letter encoding will be
-[5,14,1,3,20]
-result encoding will be
-[2,1,3,3,2]
 
 # Credits
 
