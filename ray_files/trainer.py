@@ -255,8 +255,6 @@ class Trainer:
         dynamic_loss = F.nll_loss(dynamics_outputs.state_logprobs, result_batch)
         # policy update
         policy_outputs: PolicyOutputs = self.model.policy(state_batch)
-        # policy_loss = F.nll_loss(policy_outputs.logprobs, word_batch, reduction="none")
-        # policy_loss = (-policy_batch * policy_outputs.logprobs).sum(1)
         policy_loss = (
             F.kl_div(policy_outputs.logprobs, policy_batch, reduction="none")
             .sum(dim=1)
@@ -272,7 +270,6 @@ class Trainer:
             actor_loss *= weight_batch[:, None]
         loss = actor_loss.sum() + dynamic_loss
         self.optimizer.zero_grad()
-        # loss = loss.mean()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(
             self.model._policy.parameters(), self.config.gradient_clip

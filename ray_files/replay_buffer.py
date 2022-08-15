@@ -264,18 +264,6 @@ class ReplayBuffer:
     def compute_target_value(self, game_history, index):
         # The value target is the discounted root value of the search tree td_steps into the
         # future, plus the discounted sum of all rewards until then.
-        # bootstrap_index = index + self.config.td_steps
-        # if bootstrap_index < len(game_history.root_values):
-        #     root_values = (
-        #         game_history.root_values
-        #         if game_history.reanalysed_predicted_root_values is None
-        #         else game_history.reanalysed_predicted_root_values
-        #     )
-        #     last_step_value = root_values[bootstrap_index]
-
-        #     value = last_step_value * self.config.discount_rate ** self.config.td_steps
-        # else:
-        #     value = 0
         end_reward = game_history.reward_history[-1]
         value = end_reward * self.config.discount_rate ** (
             len(game_history.reward_history) - index
@@ -303,10 +291,6 @@ class ReplayBuffer:
             [],
             [],
         )
-        # for current_index in range(0, len(game_history.action_history)):
-        #     value = self.compute_target_value(game_history, current_index)
-
-        # if current_index < len(game_history.root_values):
         value = self.compute_target_value(game_history, state_index)
         target_values.append(value)
         assert (
@@ -322,29 +306,6 @@ class ReplayBuffer:
                 tuple(game_history.result_history[state_index])
             ]
         )
-        # elif current_index == len(game_history.root_values):
-        #     target_values.append(0)
-        #     target_rewards.append(game_history.reward_history[current_index])
-        #     # Uniform policy
-        #     target_policies.append(
-        #         [
-        #             1 / len(game_history.child_visits[0])
-        #             for _ in range(len(game_history.child_visits[0]))
-        #         ]
-        #     )
-        #     actions.append(game_history.action_history[current_index])
-        # else:
-        #     # States past the end of games are treated as absorbing states
-        #     target_values.append(0)
-        #     target_rewards.append(0)
-        #     # Uniform policy
-        #     target_policies.append(
-        #         [
-        #             1 / len(game_history.child_visits[0])
-        #             for _ in range(len(game_history.child_visits[0]))
-        #         ]
-        #     )
-        #     actions.append(np.random.choice(self.config.action_space))
         return (
             target_states,
             target_values,

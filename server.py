@@ -24,7 +24,6 @@ class API(object):
     def __init__(self):
         self.seed = 1458
         self.config = Config()
-        self.config.num_simulations = self.config.action_space * 5
         self.word_dictionary = WordDictionaries(self.config.word_restriction)
         self.env = Wordle(self.word_dictionary)
         self.model = MuZeroNet(self.config, self.word_dictionary)

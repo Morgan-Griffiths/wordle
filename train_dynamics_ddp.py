@@ -397,4 +397,4 @@ if __name__ == "__main__":
         if torch.cuda.is_available():
             train_multi()
         else:
-            train_cpu()
+            raise ValueError(f'Expected GPUs to be available, got None')

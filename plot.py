@@ -23,7 +23,6 @@ def plot_data(title: str, data: list, labels: list, path="images/"):
 
 def plot_hist(title: str, data: list, path="images/"):
     print(path + title)
-    # for i, data_group in enumerate(data):
     plt.hist(data, bins=243)
     plt.title(title)
     plt.xlabel("Result")

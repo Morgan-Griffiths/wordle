@@ -29,18 +29,6 @@ class ValidateModel:
         self.model = MuZeroNet(self.config, self.word_dictionary)
         self.model.set_weights(strip_module(checkpoint["weights"]))
         self.model.eval()
-        # if is_net_ddp(self.model):
-        #     # unwrap model
-        #     self.model._policy = self.model._policy.module
-        #     self.model._dynamics = self.model._dynamics.module
-        # device = 'cpu'
-        # if torch.cuda.is_available():
-        #     device = "cuda:0"
-        # if torch.cuda.device_count() > 1:
-        #     self.model = torch.nn.DataParallel(self.model)
-        # self.model.to(device)
-        # for name,parameter in self.model.named_parameters():
-        #     print(parameter.device)
 
     def check_model_updates(self, trainer, per_buffer, shared_storage):
         try:
@@ -154,14 +142,9 @@ class ValidateModel:
             with torch.no_grad():
                 while True:
                     rewards = []
-                    # while True:
                     state, reward, done = env.reset()
                     while not done:
                         print(env.visualize_state())
-                        # model_outputs: PolicyOutputs = self.model.policy(
-                        #     torch.tensor(state.copy()).long().unsqueeze(0)
-                        # )
-                        # while not done:
                         root, mcts_info = MCTS(self.config, self.word_dictionary).run(
                             self.model, state, reward, env.turn
                         )
@@ -185,8 +168,6 @@ class ValidateModel:
         Plot the MCTS, pdf file is saved in the current directory.
         """
         try:
-            # import networkx as nx
-            # import matplotlib.pyplot as plt
             from graphviz import Digraph
         except ModuleNotFoundError:
             print(
@@ -194,7 +175,6 @@ class ValidateModel:
             )
             return None
 
-        # graph = nx.Graph()
         graph = Digraph(comment="MCTS", engine="neato")
         graph.attr("graph", rankdir="LR", splines="true", overlap="false")
         id = 0
@@ -236,12 +216,7 @@ class ValidateModel:
                         not is_action,
                     )
 
-        # nx.to_scipy_sparse_array
         traverse(root, None, None, True, False)
         graph.node(str(0), color="red")
-        # nx.draw_networkx(graph,with_labels=True)
-        # print(graph.source)
         graph.render("mcts", view=plot, cleanup=True, format="pdf")
-        # plt.savefig("filename.png",bbox_inches='tight')
-        # plt.close()
         return graph

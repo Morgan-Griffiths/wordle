@@ -52,6 +52,10 @@ I've found that ray doesn't always ultilize my gpus like i would want, so i impl
     - validate the replay buffer. Check your model inputs to make sure the representations are correct.
     - validate model updates. Step through the model learning process.
 
+#### Example of the tree exploration
+
+![img](./images/muzero_tree_search.png "Wordle")
+
 #### Frontend
 
 There is a small frontend for this project located [here](https://github.com/Morgan-Griffiths/wordle_frontend)

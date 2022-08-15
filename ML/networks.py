@@ -97,23 +97,12 @@ class Preprocess(nn.Module):
         device = state.get_device()
         if device == -1:
             device = "cpu"
-        # print(state)
         res = self.result_emb(state[:, :, :, Embeddings.RESULT])
         letter = self.letter_emb(state[:, :, :, Embeddings.LETTER])
-        # rows = torch.arange(0, 6).repeat(B, 5).reshape(B, 5, 6).permute(0, 2, 1)
         cols = torch.arange(0, 5).repeat(B, 6).reshape(B, 6, 5)
-        # row_embs = self.row_emb(rows.to(device))
         col_embs = self.col_emb(cols.to(device))
-        # positional_embs = row_embs + col_embs
-        # 1, 9, 6, 2, 8
-        # [1, 6, 5, 8]
         x = res + letter + col_embs
         x = rearrange(x, "b t h s -> b (t h) s")
-        # y = (word + row_embs[:, :, 0]).unsqueeze(-2)
-        # y.shape = (B,6,1,8)
-        # x.shape = (B,6,5,8)
-        # x = torch.cat((x, y), dim=-2)
-        # x = torch.cat((x, word), dim=-2)
         return x
 
 
@@ -128,64 +117,6 @@ class StateEncoder(nn.Module):
         hidden_state = F.leaky_relu(self.process_layer(state))
         hidden_state = F.leaky_relu(self.hidden_state(hidden_state))
         return hidden_state
-
-
-class TestNet(nn.Module):
-    def __init__(
-        self,
-        config,
-        hidden_dims=(Dims.EMBEDDING_SIZE * 5, 256, 508),
-        output_dims=(Dims.TRANSFORMER_OUTPUT + Dims.EMBEDDING_SIZE, 256, 256),
-    ):
-        super(TestNet, self).__init__()
-        self.process_input = Preprocess(config)
-        self.action_emb = nn.Embedding(config.action_space + 1, 10)
-        # self.lstm = nn.LSTM(Dims.TRANSFORMER_INPUT, 64, bidirectional=True)
-        self.transformer = CTransformer(
-            10,
-            heads=5,
-            depth=5,
-            seq_length=7,
-            num_classes=243,
-        )
-        self.fc_action1 = nn.Linear(253, 243)
-        self.fc_action2 = nn.Linear(243, 243)
-        self.output = nn.Linear(243, Dims.RESULT_STATE)
-
-    def forward(self, state, action):
-        assert state.dim() == 4, f"expect dim of 4 got {state.shape}"
-        assert action.dim() == 2, f"expect dim of 2 got {action.shape}"
-        B = state.shape[0]
-        a = self.action_emb(action)
-        if a.dim() == 2:  # for batch training
-            a = a.unsqueeze(1)
-        # (B,6,5,2)
-        x = state.view(B, 6, -1)
-        # x = self.process_input(state).view(B, 6, -1)
-        x = torch.cat((x, a), dim=1)
-        # (B,6,5,8)
-        x = self.transformer(x)
-        # (B,500)
-        return DynamicOutputs(
-            F.log_softmax(x, dim=1),
-            None,
-            None,
-        )
-
-    def dynamics(self, state, action):
-        return self.forward(state, action)
-
-    def get_gradients(self):
-        grads = []
-        for p in self.parameters():
-            grad = None if p.grad is None else p.grad.data.cpu().numpy()
-            grads.append(grad)
-        return grads
-
-    def set_gradients(self, gradients):
-        for g, p in zip(gradients, self.parameters()):
-            if g is not None:
-                p.grad = torch.from_numpy(g)
 
 
 def compute_one(state_letters, action_letter, results, device, embedder, col_embs):
@@ -337,7 +268,9 @@ class MuZeroNet(AbstractNetwork):
         if config.train_on_gpu:
             self._policy = torch.nn.DataParallel(ZeroPolicy(config))
             self._representation = torch.nn.DataParallel(StateEncoder(config))
-            self._dynamics = torch.nn.DataParallel(StateActionTransition(word_dictionary))
+            self._dynamics = torch.nn.DataParallel(
+                StateActionTransition(word_dictionary)
+            )
         else:
             self._policy = ZeroPolicy(config)
             self._representation = StateEncoder(config)
