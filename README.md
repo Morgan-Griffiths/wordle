@@ -54,6 +54,8 @@ I've found that ray doesn't always ultilize my gpus like i would want, so i impl
 
 #### Example of the tree exploration
 
+We start at the root state 'None', after picking action 10, the dynamics function has assigned a probability of 94% to arriving at the state 242 which is the winning state.
+
 ![img](./images/muzero_tree_search.png "Wordle")
 
 #### Frontend
