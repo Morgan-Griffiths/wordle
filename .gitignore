@@ -1,8 +1,10 @@
 *__pycache__
 *.npy
+*.pdf
+*.log
 .DS_Store
 .vscode/
-dataset/
-assets/
+replay_buffer_storage/
+images/
 weights/
 results/

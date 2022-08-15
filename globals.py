@@ -61,7 +61,7 @@ class Embeddings:
 
 
 class State:
-    SHAPE = (6, 5, 3)
+    SHAPE = (6, 5, 2)
 
 
 class Dims:
@@ -92,19 +92,41 @@ class NetworkOutput(NamedTuple):
     result_logits: Any
 
 
-@dataclass
 class DynamicOutputs:
-    state_logprobs: torch.tensor
-    state_probs: torch.tensor
-    rewards: np.array
+    def __init__(
+        self, state_logprobs: torch.Tensor, state_probs: torch.Tensor, rewards: np.array
+    ):
+        self.state_logprobs = state_logprobs
+        self.state_probs = state_probs
+        self.rewards = rewards
+        self.n = -1
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.n < 2:
+            return (self.state_logprobs, self.state_probs, self.rewards)[self.n]
+        else:
+            raise StopIteration
 
 
-@dataclass
 class PolicyOutputs:
-    action: int
-    logprobs: torch.tensor
-    probs: torch.tensor
-    value: float
+    def __init__(self, action, logprobs, probs, value):
+        self.action = action
+        self.logprobs = logprobs
+        self.probs = probs
+        self.value = value
+        self.n = -1
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.n < 3:
+            return (self.action, self.logprobs, self.probs, self.value)[self.n]
+        else:
+            raise StopIteration
 
 
 CHECKPOINT = {
@@ -133,40 +155,67 @@ CHECKPOINT = {
     "terminate": False,
 }
 
-with open("data/allowed_words.txt", "r") as f:
-    wordle_dictionary = f.readlines()
+alphabet = "".join("-abcdefghijklmnopqrstuvwxzy".lower().split())
 
-with open("data/possible_words.txt", "r") as f:
-    word_targets_dictionary = f.readlines()
 
-permutations = []
-for a in range(1, 4):
-    for b in range(1, 4):
-        for c in range(1, 4):
-            for d in range(1, 4):
-                for e in range(1, 4):
-                    permutations.append((a, b, c, d, e))
-result_index_dict = {dist: i for i, dist in enumerate(permutations)}
-index_result_dict = {i: dist for dist, i in result_index_dict.items()}
-target_dictionary = [word.strip() for word in word_targets_dictionary]
-dictionary = [word.strip() for word in wordle_dictionary]
-dictionary_arr = np.vstack([list(word) for word in dictionary])
-# dictionary = [
-#     "MOUNT",
-#     "HELLO",
-#     "NIXED",
-#     "AAHED",
-#     "HELMS",
-# ]
-dictionary_word_to_index = {word: i for i, word in enumerate(dictionary)}
-dictionary_index_to_word = {i: word for i, word in enumerate(dictionary)}
-# print(dictionary)
-alphabet = "".join("-abcdefghijklmnopqrstuvwxzy".upper().split())
-alphabet_dict = {letter: i for i, letter in enumerate(alphabet)}
-index_to_letter_dict = {i: letter for i, letter in enumerate(alphabet)}
-readable_result_dict = {
-    Tokens.UNKNOWN: "UNKNOWN",
-    Tokens.MISSING: "MISSING",
-    Tokens.CONTAINED: "CONTAINED",
-    Tokens.EXACT: "EXACT",
-}
+class WordDictionaries:
+    """Class to hold wordle result and word dictionaries"""
+
+    def __init__(self, word_restriction=None):
+        # RESULTS
+        permutations = []  # zero padded
+        for a in range(1, 4):
+            for b in range(1, 4):
+                for c in range(1, 4):
+                    for d in range(1, 4):
+                        for e in range(1, 4):
+                            permutations.append((a, b, c, d, e))
+        self.result_index_dict = {dist: i for i, dist in enumerate(permutations)}
+        self.index_result_dict = {i: dist for dist, i in self.result_index_dict.items()}
+
+        # WORDS
+        with open("word_data/allowed_words.txt", "r") as f:
+            wordle_dictionary = f.readlines()
+        self.dictionary = [word.strip() for word in wordle_dictionary]
+
+        with open("word_data/possible_words.txt", "r") as f:
+            word_targets_dictionary = f.readlines()
+        self.target_dictionary = [word.strip() for word in word_targets_dictionary]
+
+        if word_restriction is not None:
+            step_size = len(self.dictionary) // word_restriction
+            self.dictionary_in_use = self.dictionary[::step_size][:word_restriction]
+            self.target_dictionary = self.dictionary_in_use
+        else:
+            self.dictionary_in_use = self.target_dictionary
+
+        self.dictionary_word_to_index = {
+            word: i for i, word in enumerate(self.dictionary_in_use, 1)
+        }
+        self.dictionary_index_to_word = {
+            i: word for i, word in enumerate(self.dictionary_in_use, 1)
+        }
+        self.dictionary_index_to_word[0] = "-----"
+        self.dictionary_word_to_index["-----"] = 0
+        self.readable_result_dict = {
+            Tokens.UNKNOWN: "UNKNOWN",
+            Tokens.MISSING: "MISSING",
+            Tokens.CONTAINED: "CONTAINED",
+            Tokens.EXACT: "EXACT",
+        }
+
+        # LETTERS
+        self.alphabet_dict = {letter: i for i, letter in enumerate(alphabet)}
+        self.index_to_letter_dict = {i: letter for i, letter in enumerate(alphabet)}
+
+    def action_to_string(self, action: int):
+        try:
+            return self.dictionary_index_to_word[action]
+        except:
+            raise ValueError(f"Invalid action {action}")
+
+    def word_to_action(self, word: str):
+        try:
+            return self.dictionary_word_to_index[word.lower()]
+        except:
+            raise ValueError(f"Invalid word {word}")

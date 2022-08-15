@@ -1,7 +1,7 @@
-import os
 from pathlib import Path
 
-Path("dataset").mkdir(parents=True, exist_ok=True)
+Path("logs").mkdir(parents=True, exist_ok=True)
+Path("replay_buffer_storage").mkdir(parents=True, exist_ok=True)
 Path("weights").mkdir(parents=True, exist_ok=True)
 Path("results").mkdir(parents=True, exist_ok=True)
-Path("assets").mkdir(parents=True, exist_ok=True)
+Path("images").mkdir(parents=True, exist_ok=True)
