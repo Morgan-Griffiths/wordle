@@ -14,6 +14,13 @@ Based on this information, if you choose your words wisely, you can deduce the h
 
 ## How to use this repo
 
+**Warning**
+Ray can be super fidly with how you want the workers spread across self-play, training etc.
+Tweak the following parameters in config to get the desired result.
+- self_play_delay
+- training_delay
+- num_workers
+
 Repo setup
 
 1. run ```python setup.py```

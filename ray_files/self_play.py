@@ -171,18 +171,6 @@ class SelfPlay:
             self.model.set_weights(ray.get(shared_storage.get_info.remote("weights")))
 
             if not test_mode:
-                # if shared_storage.get_info.remote("num_played_games") < self.config.num_warmup_games:
-                #     game_history = self.play_random_game(
-                #         self.config.visit_softmax_temperature_fn(
-                #             trained_steps=ray.get(
-                #                 shared_storage.get_info.remote("training_step")
-                #             )
-                #         ),
-                #         self.config.temperature_threshold,
-                #         False,
-                #     )
-                # else:
-
                 game_history = self.play_game(
                     self.config.visit_softmax_temperature_fn(
                         trained_steps=ray.get(
@@ -201,9 +189,6 @@ class SelfPlay:
                     self.config.temperature_threshold,
                     False,
                 )
-                # print("state_history", game_history.state_history)
-                # print("result_history", game_history.result_history)
-                # print("reward_history", game_history.reward_history)
                 # Save to the shared storage
                 shared_storage.set_info.remote(
                     {
