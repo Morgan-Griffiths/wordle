@@ -1,22 +1,15 @@
 import time
-from typing import Any
 import numpy as np
 import copy
-from MCTS_mu import MCTS, GameHistory
-from ML.agents.mu_agent import MuAgent
-from globals import (
-    Dims,
-    DynamicOutputs,
-    Embeddings,
-    NetworkOutput,
-    PolicyOutputs,
-)
-from utils import to_tensor, state_transition
-from ML.networks import MuZeroNet
-from wordle import Wordle
 import math
 import torch
 import ray
+from MCTS_mu import MCTS, GameHistory
+from globals import (
+    Embeddings,
+    NetworkOutput,
+)
+from ML.networks import MuZeroNet
 
 """ 
 MuZero MCTS:
@@ -70,15 +63,6 @@ class Node:
         for action, p in policy.items():
             self.children[action] = Node(p / policy_sum)
 
-    def expand_state(self, states: int, network_outputs: NetworkOutput):
-        self.reward = network_outputs.reward
-        policy = {
-            s: math.exp(network_outputs.result_logits[0][s]) for s in range(states)
-        }
-        policy_sum = sum(policy.values())
-        for state, p in policy.items():
-            self.children[state] = Node(p / policy_sum)
-
     def add_exploration_noise(self, dirichlet_alpha, exploration_fraction):
         actions = list(self.children.keys())
         noise = np.random.dirichlet([dirichlet_alpha] * len(actions))
@@ -128,19 +112,23 @@ class Node:
 
 @ray.remote
 class SelfPlay:
-    def __init__(self, initial_checkpoint, env, config, seed) -> None:
+    def __init__(self, initial_checkpoint, env, config, word_dictionary, seed) -> None:
         self.epsilon = 0.5
         self.config = config
+        self.word_dictionary = word_dictionary
         self.env = env
 
         # Fix random generator seed
         np.random.seed(seed)
         torch.manual_seed(seed)
-
+        if self.config.train_on_gpu:
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        else:
+            self.device = "cpu"
         # Initialize the network
-        self.model = MuZeroNet(config)
+        self.model = MuZeroNet(config, word_dictionary)
         self.model.set_weights(copy.deepcopy(initial_checkpoint["weights"]))
-        self.model.to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+        self.model.to(self.device)
         self.model.eval()
 
     def decay_epsilon(self):
@@ -159,7 +147,7 @@ class SelfPlay:
         actions = [action for action in node.children.keys()]
         if temperature == 0:
             action = actions[np.argmax(visit_counts)]
-        elif temperature == float("inf"):
+        elif temperature == 1:
             action = np.random.choice(actions)
         else:
             # See paper appendix Data Generation
@@ -177,6 +165,9 @@ class SelfPlay:
         ) < self.config.training_steps and not ray.get(
             shared_storage.get_info.remote("terminate")
         ):
+            self.config.update_num_sims(
+                ray.get(shared_storage.get_info.remote("training_step"))
+            )
             self.model.set_weights(ray.get(shared_storage.get_info.remote("weights")))
 
             if not test_mode:
@@ -198,9 +189,6 @@ class SelfPlay:
                     self.config.temperature_threshold,
                     False,
                 )
-                # print("state_history", game_history.state_history)
-                # print("result_history", game_history.result_history)
-                # print("reward_history", game_history.reward_history)
                 # Save to the shared storage
                 shared_storage.set_info.remote(
                     {
@@ -231,17 +219,53 @@ class SelfPlay:
 
         # self.close_game()
 
+    def gather_trajectories(self, env, shared_storage, replay_buffer):
+        while ray.get(
+            shared_storage.get_info.remote("num_played_games")
+        ) < self.config.num_warmup_games and not ray.get(
+            shared_storage.get_info.remote("terminate")
+        ):
+            game_history = GameHistory(self.word_dictionary)
+            state, reward, done = env.reset()
+            game_history.state_history.append(state.copy())
+            game_history.word_history.append(
+                self.word_dictionary.word_to_action(env.word)
+            )
+            while not done:
+                action = np.random.randint(0, self.config.action_space)
+                state, reward, done = env.step(
+                    self.word_dictionary.action_to_string(action)
+                )
+                # Next batch
+                game_history.result_history.append(
+                    state[env.turn - 1, :, Embeddings.RESULT]
+                )
+                game_history.action_history.append(action)
+                game_history.reward_history.append(reward)
+                if not done:
+                    game_history.state_history.append(state.copy())
+                    game_history.word_history.append(
+                        self.word_dictionary.word_to_action(env.word)
+                    )
+            for i in range(env.turn):
+                game_history.child_visits.append(
+                    [a for a in range(self.config.action_space)]
+                )
+                game_history.root_values.append(1)
+                game_history.max_actions.append(0)
+            replay_buffer.save_game.remote(game_history, shared_storage)
+
     def play_game(self, temperature, temperature_threshold, render):
-        game_history = GameHistory()
+        game_history = GameHistory(self.word_dictionary)
         state, reward, done = self.env.reset()
         game_history.state_history.append(state.copy())
-        game_history.word_history.append(self.env.word_to_action(self.env.word))
+        game_history.word_history.append(
+            self.word_dictionary.word_to_action(self.env.word)
+        )
         with torch.no_grad():
             while not done:
-                root, mcts_info = MCTS(self.config).run(
-                    self.model,
-                    state,
-                    reward,
+                root, mcts_info = MCTS(self.config, self.word_dictionary).run(
+                    self.model, state, reward, self.env.turn
                 )
                 # get chosen action
                 action = self.select_action(
@@ -254,9 +278,13 @@ class SelfPlay:
                 if render:
                     print(f'Tree depth: {mcts_info["max_tree_depth"]}')
                     print(f"Root value {root.value:.2f}")
-                state, reward, done = self.env.step(self.env.action_to_string(action))
+                state, reward, done = self.env.step(
+                    self.word_dictionary.action_to_string(action)
+                )
                 if render:
-                    print(f"Played action: {self.env.action_to_string(action)}")
+                    print(
+                        f"Played action: {self.word_dictionary.action_to_string(action)}"
+                    )
                     self.env.visualize_state()
 
                 game_history.store_search_statistics(root, self.config.action_space)
@@ -269,6 +297,6 @@ class SelfPlay:
                 if not done:
                     game_history.state_history.append(state.copy())
                     game_history.word_history.append(
-                        self.env.word_to_action(self.env.word)
+                        self.word_dictionary.word_to_action(self.env.word)
                     )
         return game_history

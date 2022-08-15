@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from einops import rearrange
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -11,13 +12,10 @@ from globals import (
     DynamicOutputs,
     Tokens,
     Dims,
-    index_result_dict,
 )
 from torch.distributions import Categorical
 from ML.transformer import CTransformer
 from abc import ABC, abstractmethod
-
-from utils import to_tensor, return_rewards
 
 
 def hidden_init(layer):
@@ -26,7 +24,6 @@ def hidden_init(layer):
     return (-lim, lim)
 
 
-STATE_CONV = nn.Conv3d(6, 16, kernel_size=(1, 26, 16), stride=(1, 1, 1), bias=False)
 LETTER_EMB = nn.Embedding(28, Dims.EMBEDDING_SIZE, padding_idx=0)
 RESULT_EMB = nn.Embedding(Tokens.EXACT + 1, Dims.EMBEDDING_SIZE, padding_idx=0)
 WORD_EMB = nn.Embedding(12972, Dims.EMBEDDING_SIZE)
@@ -85,13 +82,11 @@ def mlp(
 class Preprocess(nn.Module):
     def __init__(self, config):
         super(Preprocess, self).__init__()
+        self.config = config
         self.result_emb = nn.Embedding(
             Tokens.EXACT + 1, Dims.EMBEDDING_SIZE, padding_idx=0
         )
         self.letter_emb = nn.Embedding(28, Dims.EMBEDDING_SIZE, padding_idx=0)
-        self.action_emb = nn.Embedding(
-            config.action_space, Dims.EMBEDDING_SIZE, padding_idx=0
-        )
         self.col_emb = nn.Embedding(5, Dims.EMBEDDING_SIZE)
         self.row_emb = nn.Embedding(6, Dims.EMBEDDING_SIZE)
         self.positional_emb = nn.Embedding(30, Dims.EMBEDDING_SIZE)
@@ -99,22 +94,25 @@ class Preprocess(nn.Module):
     def forward(self, state: torch.tensor):
         assert state.dim() == 4
         B = state.shape[0]
+        device = state.get_device()
+        if device == -1:
+            device = "cpu"
+        # print(state)
         res = self.result_emb(state[:, :, :, Embeddings.RESULT])
         letter = self.letter_emb(state[:, :, :, Embeddings.LETTER])
-        word = self.action_emb(state[:, :, 0, Embeddings.WORD])
-        rows = torch.arange(0, 6).repeat(B, 5).reshape(B, 5, 6).permute(0, 2, 1)
+        # rows = torch.arange(0, 6).repeat(B, 5).reshape(B, 5, 6).permute(0, 2, 1)
         cols = torch.arange(0, 5).repeat(B, 6).reshape(B, 6, 5)
-        row_embs = self.row_emb(rows)
-        col_embs = self.col_emb(cols)
-        positional_embs = row_embs + col_embs
+        # row_embs = self.row_emb(rows.to(device))
+        col_embs = self.col_emb(cols.to(device))
+        # positional_embs = row_embs + col_embs
         # 1, 9, 6, 2, 8
         # [1, 6, 5, 8]
-        x = res + letter + positional_embs
-        y = (word + row_embs[:, :, 0]).unsqueeze(-2)
+        x = res + letter + col_embs
+        x = rearrange(x, "b t h s -> b (t h) s")
+        # y = (word + row_embs[:, :, 0]).unsqueeze(-2)
         # y.shape = (B,6,1,8)
         # x.shape = (B,6,5,8)
-        x = torch.cat((x, y), dim=-2)
-        # word = self.word_emb(state[:, :, 0, Embeddings.WORD].unsqueeze(-1))
+        # x = torch.cat((x, y), dim=-2)
         # x = torch.cat((x, word), dim=-2)
         return x
 
@@ -141,7 +139,7 @@ class TestNet(nn.Module):
     ):
         super(TestNet, self).__init__()
         self.process_input = Preprocess(config)
-        self.action_emb = nn.Embedding(6, 10)
+        self.action_emb = nn.Embedding(config.action_space + 1, 10)
         # self.lstm = nn.LSTM(Dims.TRANSFORMER_INPUT, 64, bidirectional=True)
         self.transformer = CTransformer(
             10,
@@ -190,18 +188,55 @@ class TestNet(nn.Module):
                 p.grad = torch.from_numpy(g)
 
 
-class StateActionTransition(nn.Module):
-    def __init__(self, config):
-        super(StateActionTransition, self).__init__()
-        # self.process_input = Preprocess()
-        self.action_emb = nn.Embedding(12972, 10)
-        self.transformer = CTransformer(
-            10,
-            heads=5,
-            depth=5,
-            seq_length=6,
-            num_classes=Dims.RESULT_STATE,
+def compute_one(state_letters, action_letter, results, device, embedder, col_embs):
+    # takes one word and corresponding state. returns 5,6,5 one hot matrix
+    # state_letters (6,5)
+    # action_letter (5)
+    # results (6,5)
+    assert state_letters.shape == (6, 5), f"Expected (6,5) {state_letters.shape}"
+    assert action_letter.shape == torch.Size([5]), f"Expected (5) {action_letter.shape}"
+    assert results.shape == (6, 5), f"Expected (6,5) {results.shape}"
+    assert col_embs.shape == (6, 5, 10), f"Expected (6,5,10) {col_embs.shape}"
+    res = []
+    for i, letter in enumerate(action_letter):
+        one_hot = torch.zeros(6, 5).to(device)
+        mask = torch.where(state_letters == letter)
+        one_hot[mask] = 1
+        scaled_results = embedder((one_hot * results).long()) + col_embs
+        res.append(scaled_results)
+    res = torch.stack(res)
+    assert res.shape == (5, 6, 5, 10), f"Expected (5,6,5,10) {res.shape}"
+    return res
+
+
+def compute_batch(
+    state_letters, action_letters, result_batch, batch_len, device, embedder, col_embs
+):
+    attention = [
+        compute_one(
+            state_letters[i],
+            action_letters[i],
+            result_batch[i],
+            device,
+            embedder,
+            col_embs,
         )
+        for i in range(batch_len)
+    ]
+    return torch.stack(attention)
+
+
+class StateActionTransition(nn.Module):
+    def __init__(self, word_dictionary):
+        super(StateActionTransition, self).__init__()
+        self.result_emb = nn.Embedding(
+            Tokens.EXACT + 1, Dims.EMBEDDING_SIZE, padding_idx=0
+        )
+        self.letter_emb = nn.Embedding(28, Dims.EMBEDDING_SIZE, padding_idx=0)
+        self.col_emb = nn.Embedding(5, Dims.EMBEDDING_SIZE)
+        self.row_emb = nn.Embedding(6, Dims.EMBEDDING_SIZE)
+        self.word_dictionary = word_dictionary
+        self.output_layer = mlp(280, [256, 256, 256], Dims.RESULT_STATE)
 
     def get_weights(self):
         return dict_to_cpu(self.state_dict())
@@ -210,22 +245,37 @@ class StateActionTransition(nn.Module):
         assert state.dim() == 4, f"expect dim of 4 got {state.shape}"
         assert action.dim() == 2, f"expect dim of 2 got {action.shape}"
         B = state.shape[0]
-        # (B,6,5,3)
-        prev_actions = self.action_emb(state[:, :, 0, Embeddings.WORD])
-        # (B,6,emb_size)
-        a = self.action_emb(action)
-        # (B,emb_size)
-        if a.dim() == 2:
-            a = a.unsqueeze(1)
-        x = state[:, :, :, : Embeddings.WORD].contiguous().view(B, 6, -1)
-        # B,6,10
-        similarity = torch.bmm(prev_actions, a.view(B, 10, 1))
-        x = x + similarity
-        # B,6,10
-        x = torch.cat((x, a), dim=1)
-        # B, 7, 40
-        x = self.transformer(x)
-        # B, 243
+        device = state.get_device()
+        if device == -1:
+            device = "cpu"
+        action_letters = torch.tensor(
+            np.stack(
+                [
+                    np.array(
+                        [
+                            self.word_dictionary.alphabet_dict[letter]
+                            for letter in self.word_dictionary.dictionary_index_to_word[
+                                a.item()
+                            ]
+                        ]
+                    )
+                    for a in action
+                ]
+            )
+        ).to(
+            device
+        )  # (B,5)
+        state_result = self.result_emb(state[:, :, :, Embeddings.RESULT])
+        state_letters = self.letter_emb(state[:, :, :, Embeddings.LETTER])
+        cols = torch.arange(0, 5).repeat(B, 6).reshape(B, 6, 5)
+        col_embs = self.col_emb(cols.to(device))
+        combined_embs = state_result + state_letters + col_embs  # (B,6,5,emb)
+        combined = rearrange(combined_embs, "b t h s -> b (t h) s")
+        assert combined.shape == (B, 30, Dims.EMBEDDING_SIZE)
+        emb_actions = self.letter_emb(action_letters)
+        assert emb_actions.shape == (B, 5, Dims.EMBEDDING_SIZE)
+        x = torch.cat((combined, emb_actions), dim=1)
+        x = self.output_layer(x.view(B, -1))
         m = Categorical(logits=x)
         turns = torch.count_nonzero(state, dim=1)[:, 0, 0].view(-1, 1)
         bools = torch.where(turns >= 5, 1, 0)
@@ -236,33 +286,38 @@ class StateActionTransition(nn.Module):
             rewards,
         )
 
+    def dynamics(self, state, action):
+        return self.forward(state, action)
+
 
 class ZeroPolicy(nn.Module):
     def __init__(self, config):
         super(ZeroPolicy, self).__init__()
         self.seed = torch.manual_seed(1234)
         self.process_input = Preprocess(config)
-        self.transformer = CTransformer(
-            48,
-            heads=8,
-            depth=5,
-            seq_length=6,
-            num_classes=Dims.OUTPUT,
-        )
+        # self.transformer = CTransformer(
+        #     48,
+        #     heads=8,
+        #     depth=5,
+        #     seq_length=6,
+        #     num_classes=Dims.OUTPUT,
+        # )
+        self.output_layer = mlp(240, [256, 256, 256], 256)
         # the part for actions
-        self.fc_action1 = nn.Linear(Dims.TRANSFORMER_OUTPUT, 256)
+        self.fc_action1 = nn.Linear(256, 256)
         self.fc_action2 = nn.Linear(256, config.action_space)
 
         # the part for the value function
-        self.value_output = nn.Linear(Dims.TRANSFORMER_OUTPUT, 1)
+        self.value_output = nn.Linear(256, 1)
         self.advantage_output = nn.Linear(256, config.action_space)
 
     def forward(self, state: torch.LongTensor):
         # B,26
         B = state.shape[0]
-        x = self.process_input(state).view(B, 6, -1)
-        # [B, 6, 40]
-        x = self.transformer(x)
+        x = self.process_input(state).view(B, -1)
+        # [B, 240]
+        # x = self.transformer(x)
+        x = self.output_layer(x)
         # [B, 500]
         # action head
         act = self.fc_action2(F.leaky_relu(self.fc_action1(x)))
@@ -276,11 +331,20 @@ class ZeroPolicy(nn.Module):
 
 
 class MuZeroNet(AbstractNetwork):
-    def __init__(self, config):
+    def __init__(self, config, word_dictionary):
         super(MuZeroNet, self).__init__()
-        self._policy = ZeroPolicy(config)
-        self._representation = StateEncoder(config)
-        self._dynamics = StateActionTransition(config)
+        self.config = config
+        if config.train_on_gpu:
+            self._policy = torch.nn.DataParallel(ZeroPolicy(config))
+            self._representation = torch.nn.DataParallel(StateEncoder(config))
+            self._dynamics = torch.nn.DataParallel(StateActionTransition(word_dictionary))
+        else:
+            self._policy = ZeroPolicy(config)
+            self._representation = StateEncoder(config)
+            self._dynamics = StateActionTransition(word_dictionary)
+
+    def __call__(self, state, action):
+        return self._dynamics(state, action)
 
     def representation(self, state):
         return self._representation(state)

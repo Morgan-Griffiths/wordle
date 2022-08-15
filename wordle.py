@@ -1,55 +1,32 @@
-from email.policy import default
-from unittest import result
 import numpy as np
 from copy import deepcopy
-from globals import (
-    Embeddings,
-    Tokens,
-    Axis,
-    alphabet,
-    alphabet_dict,
-    State,
-    dictionary,
-    index_to_letter_dict,
-    readable_result_dict,
-)
+from globals import Embeddings, Tokens, alphabet, State, WordDictionaries
 from collections import defaultdict
 from prettytable import PrettyTable
 
 
 class Wordle:
-    def __init__(self, word_restriction=None) -> None:
+    def __init__(self, word_dictionary: WordDictionaries) -> None:
         super().__init__()
-        if word_restriction is not None:
-            step_size = len(dictionary) // word_restriction
-            self.dictionary = dictionary[::step_size][:word_restriction]
-        else:
-            self.dictionary = dictionary
-        self.alphabet_dict = alphabet_dict
-        self.dictionary_word_to_index = {
-            word: i for i, word in enumerate(self.dictionary)
-        }
-        self.dictionary_index_to_word = {
-            i: word for i, word in enumerate(self.dictionary)
-        }
+        self.word_dictionary = word_dictionary
         self.gamma = 0.05
         self.reset()
 
     def reset(self):
-        self.word = np.random.choice(self.dictionary)
+        self.word = np.random.choice(self.word_dictionary.target_dictionary)
         self.alphabet = {letter: Tokens.UNKNOWN for letter in alphabet}
         self.turn = 0
-        self.state = np.zeros(State.SHAPE)
+        self.state = np.zeros(State.SHAPE, dtype=np.int8)
         self.game_over = False
         self.rewards = 0
         self.words = []
         return self.state, self.rewards, self.game_over
 
     def step(self, word):
-        word = word.upper()
-        if word not in self.dictionary_word_to_index:
+        word = word.lower()
+        if word not in self.word_dictionary.dictionary_word_to_index:
             raise ValueError(f"{word.title()} is not contained in the dictionary")
-        self.words.append(self.dictionary_word_to_index[word])
+        self.words.append(self.word_dictionary.dictionary_word_to_index[word])
         result = self.evaluate_word(word)
         self.update_alphabet(word, result)
         self.increment_turn()
@@ -94,20 +71,18 @@ class Wordle:
                 update = Tokens.MISSING
             self.update_state(
                 slot=i,
-                state=update,
-                letter=self.alphabet_dict[letter],
+                result=update,
+                letter=self.word_dictionary.alphabet_dict[letter],
                 turn=self.turn,
-                word=word,
             )
             letter_result[i] = update
             letter_freqs[letter] = max(0, letter_freqs[letter] - 1)
         return letter_result
 
-    def update_state(self, slot, state, letter, turn, word):
-        # 5, 6, 3
+    def update_state(self, slot, result, letter, turn):
+        # 5, 6, 2
         self.state[turn, slot, Embeddings.LETTER] = letter
-        self.state[turn, slot, Embeddings.RESULT] = state
-        self.state[turn, slot, Embeddings.WORD] = self.word_to_action(word)
+        self.state[turn, slot, Embeddings.RESULT] = result
 
     def visualize_state(self):
         letter_headers = [f"Letters_{i}" for i in range(5)]
@@ -119,14 +94,14 @@ class Wordle:
             for row in range(5):
                 letter = self.state[turn, row, Embeddings.LETTER]
                 result = self.state[turn, row, Embeddings.RESULT]
-                row_items.append(index_to_letter_dict[letter])
-                row_items.append(readable_result_dict[int(result)])
+                row_items.append(self.word_dictionary.index_to_letter_dict[letter])
+                row_items.append(self.word_dictionary.readable_result_dict[int(result)])
             table.add_row(row_items)
         print(f"Target word {self.word}")
         print(table)
 
     def copy(self):
-        env = Wordle()
+        env = Wordle(self.word_dictionary)
         env.word = deepcopy(self.word)
         env.state = deepcopy(self.state)
         env.game_over = deepcopy(self.game_over)
@@ -134,17 +109,3 @@ class Wordle:
         env.turn = deepcopy(self.turn)
         env.words = deepcopy(self.words)
         return env
-
-    def action_to_string(self, action: int):
-        return self.dictionary_index_to_word[action]
-
-    def word_to_action(self, word: str):
-        try:
-            return self.dictionary_word_to_index[word.upper()]
-        except:
-            raise ValueError(f"Invalid word {word}")
-
-    # def update_state(self, slot, state, letter, turn):
-    #     # 5, 6, 26
-    #     # turn emb, letter emb, state emb
-    #     self.state[slot, turn, letter] = state

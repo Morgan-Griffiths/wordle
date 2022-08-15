@@ -1,5 +1,4 @@
 import copy
-import re
 import time
 
 import numpy as np
@@ -7,17 +6,18 @@ import ray
 import torch
 
 from ML.networks import MuZeroNet
-from globals import Embeddings, PolicyOutputs, result_index_dict, State
+from globals import WordDictionaries, PolicyOutputs, State
 
 
 @ray.remote
 class ReplayBuffer:
     """
-    Class which run in a dedicated thread to store played games and generate batch.
+    Run the class in a dedicated thread to store played games to generate a batch.
     """
 
-    def __init__(self, initial_checkpoint, initial_buffer, config):
+    def __init__(self, initial_checkpoint, initial_buffer, config, word_dictionary):
         self.config = config
+        self.word_dictionary = word_dictionary
         self.buffer = copy.deepcopy(initial_buffer)
         self.num_played_games = initial_checkpoint["num_played_games"]
         self.num_played_steps = initial_checkpoint["num_played_steps"]
@@ -61,8 +61,19 @@ class ReplayBuffer:
             del self.buffer[del_id]
 
         if shared_storage:
-            shared_storage.set_info.remote("num_played_games", self.num_played_games)
-            shared_storage.set_info.remote("num_played_steps", self.num_played_steps)
+
+            shared_storage.set_info.remote(
+                {
+                    "episode_length": len(game_history.action_history) - 1,
+                    "actions": np.array(game_history.max_actions),
+                    "total_reward": sum(game_history.reward_history),
+                    "mean_value": np.mean(
+                        [value for value in game_history.root_values if value]
+                    ),
+                    "num_played_games": self.num_played_games,
+                    "num_played_steps": self.num_played_steps,
+                }
+            )
 
     def get_buffer(self):
         return self.buffer
@@ -94,7 +105,7 @@ class ReplayBuffer:
                 result_targets,
                 word_targets,
             ) = self.make_target(game_history, game_pos)
-            
+
             index_batch.append([game_id, game_pos])
             state_batch.append(states)
             action_batch.append(actions)
@@ -117,7 +128,7 @@ class ReplayBuffer:
 
         if self.config.PER:
             weight_batch = np.array(weight_batch, dtype="float32") / max(weight_batch)
-
+        state_batch = np.array(state_batch)
         state_batch = (
             torch.tensor(state_batch).long().view(self.config.batch_size, *State.SHAPE)
         )
@@ -307,7 +318,9 @@ class ReplayBuffer:
         actions.append(game_history.action_history[state_index])
         word_targets.append(game_history.word_history[state_index])
         result_targets.append(
-            result_index_dict[tuple(game_history.result_history[state_index])]
+            self.word_dictionary.result_index_dict[
+                tuple(game_history.result_history[state_index])
+            ]
         )
         # elif current_index == len(game_history.root_values):
         #     target_values.append(0)
@@ -350,15 +363,16 @@ class Reanalyse:
     See paper appendix Reanalyse.
     """
 
-    def __init__(self, initial_checkpoint, config):
+    def __init__(self, initial_checkpoint, config, word_dictionary):
         self.config = config
+        self.word_dictionary = word_dictionary
 
         # Fix random generator seed
         np.random.seed(self.config.seed)
         torch.manual_seed(self.config.seed)
 
         # Initialize the network
-        self.model = MuZeroNet(self.config)
+        self.model = MuZeroNet(self.config, self.word_dictionary)
         self.model.set_weights(initial_checkpoint["weights"])
         # self.model.to(torch.device("cuda" if self.config.reanalyse_on_gpu else "cpu")) # uncomment for gpu
         self.model.eval()

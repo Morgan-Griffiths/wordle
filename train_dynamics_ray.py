@@ -3,31 +3,23 @@ import math
 import pathlib
 import pickle
 import time
-from wordle import Wordle
-from globals import CHECKPOINT, WordDictionaries
+import torch
+import torch.multiprocessing as mp
+from torch.utils.tensorboard import SummaryWriter
 import ray
 import numpy as np
 
+from config import Config
+from wordle import Wordle
+from globals import CHECKPOINT, WordDictionaries
 from ray_files.utils import CPUActor
-from ray_files.validate_model import ValidateModel
 from ray_files.trainer import Trainer
 from ray_files.shared_storage import SharedStorage
 from ray_files.replay_buffer import ReplayBuffer, Reanalyse
 from ray_files.self_play import SelfPlay
 
-from torch.utils.tensorboard import SummaryWriter
-import torch.multiprocessing as mp
-import torch
 
-
-class MuZero:
-    """Class that handles agent training and logging progress.
-    Uses tensorboard for logging.
-    Saves model updates in config.weights_path
-    Saves the replay buffer in the dataset folder
-
-    """
-
+class MuDyno:
     def __init__(self, config):
         self.config = config
         self.word_dictionary = WordDictionaries(config.word_restriction)
@@ -60,10 +52,6 @@ class MuZero:
         Args:
             log_in_tensorboard (bool): Start a testing worker and log its performance in TensorBoard.
         """
-        if log_in_tensorboard or self.config.save_model:
-            self.config.results_path.mkdir(parents=True, exist_ok=True)
-            self.config.weights_path.mkdir(parents=True, exist_ok=True)
-
         # Manage GPUs
         if 0 < self.num_gpus:
             num_gpus_per_worker = self.num_gpus / (
@@ -74,9 +62,9 @@ class MuZero:
             )
             if 1 < num_gpus_per_worker:
                 num_gpus_per_worker = math.floor(num_gpus_per_worker)
+            num_gpus_per_worker -= 0.05
         else:
             num_gpus_per_worker = 0
-        # num_gpus_per_worker = 0.25
         print("num_gpus_per_worker", num_gpus_per_worker)
         # Initialize workers
         self.training_worker = Trainer.options(
@@ -93,7 +81,10 @@ class MuZero:
         self.shared_storage_worker.set_info.remote("terminate", False)
 
         self.replay_buffer_worker = ReplayBuffer.remote(
-            self.checkpoint, self.replay_buffer, self.config, self.word_dictionary
+            self.checkpoint,
+            self.replay_buffer,
+            self.config,
+            self.word_dictionary,
         )
 
         if self.config.use_last_model_value:
@@ -118,12 +109,12 @@ class MuZero:
 
         # Launch workers
         [
-            self_play_worker.continuous_self_play.remote(
-                self.shared_storage_worker, self.replay_buffer_worker
+            self_play_worker.gather_trajectories.remote(
+                self.env.copy(), self.shared_storage_worker, self.replay_buffer_worker
             )
             for self_play_worker in self.self_play_workers
         ]
-        self.training_worker.continuous_update_weights.remote(
+        self.training_worker.continuous_dynamic_weight_updates.remote(
             self.replay_buffer_worker, self.shared_storage_worker
         )
         if self.config.use_last_model_value:
@@ -139,18 +130,6 @@ class MuZero:
         """
         Keep track of the training performance.
         """
-        # Launch the test worker to get performance metrics
-        self.test_worker = SelfPlay.options(num_cpus=0, num_gpus=num_gpus).remote(
-            self.checkpoint,
-            self.env,
-            self.config,
-            self.word_dictionary,
-            self.config.seed + self.config.num_workers,
-        )
-        self.test_worker.continuous_self_play.remote(
-            self.shared_storage_worker, None, True
-        )
-
         # Write everything in TensorBoard
         writer = SummaryWriter(self.config.results_path)
 
@@ -198,42 +177,8 @@ class MuZero:
         ]
         info = ray.get(self.shared_storage_worker.get_info.remote(keys))
         try:
-            while info["training_step"] < self.config.training_steps:
+            while info["training_step"] < self.config.num_warmup_training_steps:
                 info = ray.get(self.shared_storage_worker.get_info.remote(keys))
-                writer.add_scalar(
-                    "1.Total_reward/1.Total_reward",
-                    info["total_reward"],
-                    counter,
-                )
-                writer.add_scalar(
-                    "1.Total_reward/2.Mean_value",
-                    info["mean_value"],
-                    counter,
-                )
-                writer.add_scalar(
-                    "1.Total_reward/3.Episode_length",
-                    info["episode_length"],
-                    counter,
-                )
-                writer.add_scalar(
-                    "1.Total_reward/4.MuZero_reward",
-                    info["muzero_reward"],
-                    counter,
-                )
-                writer.add_scalar(
-                    "1.Total_reward/5.Opponent_reward",
-                    info["opponent_reward"],
-                    counter,
-                )
-                writer.add_scalar(
-                    "1.Total_reward/5.actor_value",
-                    info["actor_value"],
-                    counter,
-                )
-                writer.add_histogram("1.Actor/actions", info["actions"], counter)
-                writer.add_histogram(
-                    "1.Actor/actor_probs", info["actor_probs"], counter
-                )
                 writer.add_histogram(
                     "2.Dynamics/dynamic_prob_winning_state",
                     info["dynamic_prob_winning_state"],
@@ -269,13 +214,10 @@ class MuZero:
                 writer.add_scalar(
                     "3.Loss/1.Total_weighted_loss", info["total_loss"], counter
                 )
-                writer.add_scalar("3.Loss/actor_loss", info["actor_loss"], counter)
                 writer.add_scalar("3.Loss/dynamic_loss", info["dynamic_loss"], counter)
-                writer.add_scalar("3.Loss/policy_loss", info["policy_loss"], counter)
-                writer.add_scalar("3.Loss/value_loss", info["value_loss"], counter)
                 writer.add_scalar("3.Loss/total_loss", info["total_loss"], counter)
                 print(
-                    f'Last test reward: {info["total_reward"]:.2f}. Training step: {info["training_step"]}/{self.config.training_steps}. Played games: {info["num_played_games"]}. Loss: {info["total_loss"]:.2f}',
+                    f'Last test reward: {info["total_reward"]:.2f}. Training step: {info["training_step"]}/{self.config.num_warmup_training_steps}. Played games: {info["num_played_games"]}. Loss: {info["total_loss"]:.2f}',
                     end="\r",
                 )
                 counter += 1
@@ -284,20 +226,6 @@ class MuZero:
             pass
 
         self.terminate_workers(writer)
-
-        if self.config.save_model:
-            # Persist replay buffer to disk
-            path = self.config.buffer_path / "replay_buffer.pkl"
-            print(f"\n\nPersisting replay buffer games to disk at {path}")
-            pickle.dump(
-                {
-                    "buffer": self.replay_buffer,
-                    "num_played_games": self.checkpoint["num_played_games"],
-                    "num_played_steps": self.checkpoint["num_played_steps"],
-                    "num_reanalysed_games": self.checkpoint["num_reanalysed_games"],
-                },
-                open(path, "wb"),
-            )
 
     def terminate_workers(self, writer):
         """
@@ -330,10 +258,11 @@ class MuZero:
         """
         # Load checkpoint
         if checkpoint_path:
-            parent_dir = pathlib.Path(__file__).resolve().parents[1]
+            parent_dir = pathlib.Path(__file__).resolve().parents[0]
             checkpoint_path = pathlib.Path(parent_dir / checkpoint_path)
             self.checkpoint = torch.load(checkpoint_path, map_location="cpu")
             print(f"\nUsing checkpoint from {checkpoint_path}")
+
         # Load replay buffer
         if replay_buffer_path:
             replay_buffer_path = pathlib.Path(replay_buffer_path)
@@ -359,53 +288,8 @@ class MuZero:
             self.checkpoint["num_played_games"] = 0
             self.checkpoint["num_reanalysed_games"] = 0
 
-    def test(self, render=True, num_tests=1, num_gpus=0):
-        """
-        Test the model in a dedicated thread.
-        Args:
-            render (bool): To display or not the environment. Defaults to True.
-            opponent (str): "self" for self-play, "human" for playing against MuZero and "random"
-            for a random agent, None will use the opponent in the config. Defaults to None
-            num_tests (int): Number of games to average. Defaults to 1.
-            num_gpus (int): Number of GPUs to use, 0 forces to use the CPU. Defaults to 0.
-        """
-        self_play_worker = SelfPlay.options(
-            num_cpus=0,
-            num_gpus=num_gpus,
-        ).remote(self.checkpoint, self.env, self.config, np.random.randint(10000))
-        results = []
-        for i in range(num_tests):
-            print(f"Testing {i+1}/{num_tests}")
-            results.append(
-                ray.get(
-                    self_play_worker.play_game.remote(
-                        0,
-                        0,
-                        render,
-                    )
-                )
-            )
-        # self_play_worker.close_game.remote()
-        result = np.mean([sum(history.reward_history) for history in results])
-        return result
-
-    def validate(self):
-        vm = ValidateModel(self.checkpoint, self.config, self.word_dictionary)
-        vm.validate(self.env)
-
-    def validate_mcts(self):
-        vm = ValidateModel(self.checkpoint, self.config, self.word_dictionary)
-        vm.validate_mcts(self.env)
-
-    def shutdown_ray(self):
-        ray.shutdown()
-
     def __enter__(self):
-        if self.config.train_on_gpu:
-            num_gpus = torch.cuda.device_count()
-        else:
-            num_gpus = 0
-        ray.init(num_gpus=num_gpus, ignore_reinit_error=True)
+        ray.init(num_gpus=self.num_gpus, ignore_reinit_error=True)
         cpu_actor = CPUActor.remote()
         cpu_weights = cpu_actor.get_initial_weights.remote(
             self.config, self.word_dictionary
@@ -415,3 +299,58 @@ class MuZero:
 
     def __exit__(self, exc_type, exc_value, traceback):
         ray.shutdown()
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="""
+        Train and evaluate networks on letter representations.
+        """
+    )
+    parser.add_argument("-b", "--batch", help="Batch size", default=128, type=int)
+    parser.add_argument(
+        "--resume", help="resume training from an earlier run", action="store_true"
+    )
+    parser.add_argument("-lr", help="learning rate", type=float, default=3e-3)
+    parser.add_argument(
+        "-v", dest="validate", help="validate the trained network", action="store_true"
+    )
+    parser.add_argument(
+        "-g",
+        "--games",
+        dest="warmup_games",
+        help="number of warmup games to play per thread",
+        default=5000,
+        type=int,
+    )
+    parser.add_argument(
+        "-s",
+        "--steps",
+        dest="warmup_steps",
+        help="number of dynamics training steps",
+        default=100,
+        type=int,
+    )
+    parser.add_argument(
+        "--no-gpu",
+        dest="no_gpu",
+        default=False,
+        action="store_true",
+        help="training epochs",
+    )
+    parser.set_defaults(resume=False)
+    parser.set_defaults(validate=False)
+
+    args = parser.parse_args()
+
+    print("args", args)
+    config = Config()
+    config.PER = False
+    config.train_on_gpu = not args.no_gpu
+    config.num_warmup_training_steps = args.warmup_steps
+    config.num_warmup_games = args.warmup_games
+    config.load_dynamic_weights = False
+    with MuDyno(config) as mu_dyno:
+        mu_dyno.train()

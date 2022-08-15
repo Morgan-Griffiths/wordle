@@ -1,12 +1,11 @@
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import os
-import numpy as np
 
 COLORS = list(mcolors.TABLEAU_COLORS)
 
 
-def plot_data(title: str, data: list, labels: list, path="assets/"):
+def plot_data(title: str, data: list, labels: list, path="images/"):
     print(path + title)
     epochs = range(1, len(data[0]) + 1)
     for i, data_group in enumerate(data):
@@ -22,10 +21,10 @@ def plot_data(title: str, data: list, labels: list, path="assets/"):
     plt.close()
 
 
-def plot_hist(title: str, data: list, path="assets/"):
+def plot_hist(title: str, data: list, path="images/"):
     print(path + title)
     # for i, data_group in enumerate(data):
-    plt.hist(data,bins=243)
+    plt.hist(data, bins=243)
     plt.title(title)
     plt.xlabel("Result")
     plt.ylabel("Count")
@@ -37,7 +36,7 @@ def plot_hist(title: str, data: list, path="assets/"):
     plt.close()
 
 
-def plot_q_values(title: str, data: list, action_labels: list, path="assets/"):
+def plot_q_values(title: str, data: list, action_labels: list, path="images/"):
     print(path + title)
     print(f"data dimensions: {data.shape}")
     print(f"action_labels: {len(action_labels)}")
@@ -68,7 +67,7 @@ def plot_q_values(title: str, data: list, action_labels: list, path="assets/"):
     plt.close()
 
 
-def plot_frequencies(title: str, data: list, action_labels: list, path="assets/"):
+def plot_frequencies(title: str, data: list, action_labels: list, path="images/"):
     print(path + title)
     print(f"data dimensions: {data.shape}")
     print(f"action_labels: {len(action_labels)}")
